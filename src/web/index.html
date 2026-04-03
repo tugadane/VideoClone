@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link rel="stylesheet" href="styles.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;900&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<title>Clone Studio v0.3.1</title>
+</head>
+<body class="bg-bg-dark font-display text-slate-100 min-h-screen select-none">
+
+<div class="flex flex-col h-screen overflow-hidden">
+
+    <!-- ===== TOP BAR ===== -->
+    <header id="titleBar" class="h-14 border-b border-primary/10 px-6 flex items-center justify-between shrink-0 bg-black/90 backdrop-blur-md z-20" style="cursor: default;">
+        <!-- Left: Logo -->
+        <div class="flex items-center gap-3 pywebview-drag-region" style="flex:1; -webkit-app-region: drag;">
+            <div class="size-9 bg-gradient-to-br from-primary to-orange-800 rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
+                <span class="material-symbols-outlined text-white text-lg">layers</span>
+            </div>
+            <div class="flex flex-col">
+                <h1 class="text-slate-100 text-sm font-bold leading-tight">Clone Studio</h1>
+                <p class="text-primary text-[9px] font-bold uppercase tracking-widest">Video Cloner</p>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold uppercase border border-primary/20 ml-2">v0.3.1</span>
+        </div>
+
+        <!-- Right: Icon buttons -->
+        <div class="flex items-center gap-1" style="-webkit-app-region: no-drag;">
+            <button class="topbar-btn p-2.5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all rounded-lg relative" id="btnHistory" title="Clone History">
+                <span class="material-symbols-outlined text-xl">history</span>
+            </button>
+            <button class="p-2.5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all rounded-lg" title="Guide" id="btnGuide">
+                <span class="material-symbols-outlined text-xl">help_outline</span>
+            </button>
+            <div class="h-6 w-[1px] bg-white/10 mx-1"></div>
+            <button class="p-2 text-slate-400 hover:text-slate-200 transition-colors" title="Minimize" id="btnMinimize">
+                <span class="material-symbols-outlined text-lg">minimize</span>
+            </button>
+            <button class="p-2 text-slate-400 hover:text-slate-200 transition-colors" title="Maximize" id="btnMaximize">
+                <span class="material-symbols-outlined text-lg">crop_square</span>
+            </button>
+            <button class="p-2 text-slate-400 hover:text-red-500 transition-colors" title="Close" id="btnClose">
+                <span class="material-symbols-outlined text-lg">close</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- ===== LEFT PANEL: Task Queue ===== -->
+        <aside class="w-80 border-r border-white/5 bg-surface flex flex-col shrink-0">
+            <!-- Task Queue Header -->
+            <div class="p-5 border-b border-white/5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-sm">queue</span>
+                        Task Queue
+                    </h3>
+                    <span class="text-xs text-slate-400" id="taskCounter">0/0</span>
+                </div>
+                <!-- Progress Bar -->
+                <div class="flex flex-col gap-1.5" id="progressSection" style="display:none;">
+                    <div class="flex justify-between text-[11px] text-slate-400">
+                        <span id="progressLabel">Idle</span>
+                        <span class="text-primary font-bold" id="progressPercent">0%</span>
+                    </div>
+                    <div class="w-full bg-black h-1.5 rounded-full overflow-hidden border border-white/5">
+                        <div class="bg-gradient-to-r from-orange-600 to-primary h-full rounded-full shadow-[0_0_10px_rgba(255,92,0,0.3)] transition-all duration-300" style="width: 0%" id="progressBar"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 text-right" id="progressRemaining"></p>
+                </div>
+                <!-- Idle message -->
+                <div id="idleMessage" class="text-center py-4">
+                    <p class="text-xs text-slate-500">No active task</p>
+                </div>
+            </div>
+
+            <!-- Clone List -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1.5" id="taskList">
+                <!-- Items will be generated by JS -->
+            </div>
+
+            <!-- FFmpeg Status -->
+            <div class="p-3 border-t border-white/5">
+                <div class="bg-black/50 p-3 rounded-lg flex items-center gap-2">
+                    <div class="size-2 rounded-full" id="ffmpegDot"></div>
+                    <p class="text-[10px] text-slate-400" id="ffmpegStatus">Checking FFmpeg...</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ===== RIGHT PANEL: Main Content ===== -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar">
+
+            <!-- ==================== CLONE VIEW (default) ==================== -->
+            <div class="tab-view" id="tab-clone">
+                <div class="p-8 max-w-5xl mx-auto w-full space-y-6">
+                    <!-- Title -->
+                    <div class="space-y-1">
+                        <h1 class="text-2xl font-black text-white tracking-tight">Video Cloner</h1>
+                        <p class="text-slate-400 text-sm">Generate visually identical clones with unique binary signatures.</p>
+                    </div>
+
+                    <!-- Drop Zone -->
+                    <div class="relative group" id="dropZone">
+                        <div class="absolute -inset-0.5 bg-gradient-to-r from-primary/40 to-orange-600/20 rounded-xl blur opacity-10 group-hover:opacity-30 transition duration-500"></div>
+                        <div class="relative bg-surface border-2 border-dashed border-primary/20 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:border-primary transition-colors cursor-pointer" id="dropZoneInner">
+                            <div class="size-14 bg-primary/10 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                <span class="material-symbols-outlined text-primary text-3xl">movie_edit</span>
+                            </div>
+                            <h3 class="text-base font-bold text-white mb-1">Upload Source Video</h3>
+                            <p class="text-slate-400 text-sm max-w-xs mx-auto mb-5">Drag and drop your video file here, or click to browse.</p>
+                            <button class="px-6 py-2.5 bg-primary text-black font-bold rounded-lg hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 active:scale-95" id="btnSelectFile">
+                                Select Video File
+                            </button>
+                            <p class="text-slate-500 text-xs mt-3">Supports MP4, MKV, AVI, MOV, WebM</p>
+
+                            <!-- Unified Link Download -->
+                            <div class="mt-5 w-full max-w-lg" id="linkDownloadArea">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <div class="h-[1px] flex-1 bg-white/10"></div>
+                                    <span class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">or download from link</span>
+                                    <div class="h-[1px] flex-1 bg-white/10"></div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <select class="bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none shrink-0 w-[155px]" id="selectSource">
+                                        <option value="tiktok">TikTok</option>
+                                        <option value="reels">Instagram Reels</option>
+                                        <option value="fbreels">Facebook Reels</option>
+                                        <option value="ytshorts">YouTube Shorts</option>
+                                        <option value="gdrive">Google Drive</option>
+                                    </select>
+                                    <input class="flex-1 bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-600" type="text" id="inputLinkUrl" placeholder="Paste video link here..."/>
+                                    <button class="px-4 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-primary/10 hover:border-primary/30 hover:text-primary transition-all text-sm font-bold flex items-center gap-2 shrink-0" id="btnLinkDownload">
+                                        <span class="material-symbols-outlined text-base">cloud_download</span>
+                                        Download
+                                    </button>
+                                </div>
+                                <div class="hidden mt-2" id="linkProgress">
+                                    <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                                        <span id="linkProgressLabel">Downloading...</span>
+                                        <span class="text-primary font-bold" id="linkProgressPercent">0%</span>
+                                    </div>
+                                    <div class="w-full bg-black h-1.5 rounded-full overflow-hidden border border-white/5">
+                                        <div class="bg-gradient-to-r from-orange-600 to-primary h-full rounded-full shadow-[0_0_10px_rgba(255,92,0,0.3)] transition-all duration-300" style="width: 0%" id="linkProgressBar"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- File Info (hidden until file is selected) -->
+                    <div class="bg-surface rounded-xl border border-white/5 p-4 shadow-2xl hidden" id="fileInfo">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-3">
+                                <div class="size-9 bg-primary/10 rounded-lg flex items-center justify-center">
+                                    <span class="material-symbols-outlined text-primary text-lg">videocam</span>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-sm text-white" id="infoFilename">-</p>
+                                    <p class="text-xs text-slate-400" id="infoFilesize">-</p>
+                                </div>
+                            </div>
+                            <button class="p-1.5 text-slate-500 hover:text-red-500 transition-colors rounded-lg hover:bg-red-500/10" id="btnClearFile">
+                                <span class="material-symbols-outlined text-sm">close</span>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-4 gap-2">
+                            <div class="bg-black rounded-lg p-3">
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Duration</p>
+                                <p class="text-sm font-semibold text-white mt-0.5" id="infoDuration">-</p>
+                            </div>
+                            <div class="bg-black rounded-lg p-3">
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Resolution</p>
+                                <p class="text-sm font-semibold text-white mt-0.5" id="infoResolution">-</p>
+                            </div>
+                            <div class="bg-black rounded-lg p-3">
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Codec</p>
+                                <p class="text-sm font-semibold text-white mt-0.5" id="infoCodec">-</p>
+                            </div>
+                            <div class="bg-black rounded-lg p-3">
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Bitrate</p>
+                                <p class="text-sm font-semibold text-white mt-0.5" id="infoBitrate">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                        <!-- LEFT: File Configuration (3 cols) -->
+                        <div class="lg:col-span-3">
+                            <div class="bg-surface rounded-xl border border-white/5 p-5 space-y-5 shadow-2xl">
+                                <div class="flex items-center gap-2 border-b border-white/5 pb-3">
+                                    <span class="material-symbols-outlined text-primary text-lg">settings</span>
+                                    <h3 class="font-bold text-white uppercase tracking-wider text-xs">File Configuration</h3>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <!-- Naming Template -->
+                                    <div class="space-y-2">
+                                        <label class="text-xs font-semibold text-slate-400">Naming Template</label>
+                                        <input class="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary transition-all" type="text" id="inputTemplate" value="{title}_clone{index}_{date}"/>
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <span class="template-tag px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all" data-tag="{title}">{title}</span>
+                                            <span class="template-tag px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all" data-tag="{index}">{index}</span>
+                                            <span class="template-tag px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all" data-tag="{date}">{date}</span>
+                                            <span class="template-tag px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all" data-tag="{time}">{time}</span>
+                                            <span class="template-tag px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all" data-tag="{rand}">{rand}</span>
+                                        </div>
+                                        <div class="bg-black/50 rounded-md px-3 py-2">
+                                            <p class="text-[11px] text-slate-500">Preview: <span class="text-primary font-medium" id="templatePreview">-</span></p>
+                                        </div>
+                                    </div>
+                                    <!-- Output Format -->
+                                    <div class="space-y-2">
+                                        <label class="text-xs font-semibold text-slate-400">Output Format</label>
+                                        <select class="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none" id="selectFormat">
+                                            <option value="mp4">MP4 (default)</option>
+                                            <option value="mkv">MKV (Matroska)</option>
+                                            <option value="avi">AVI</option>
+                                            <option value="mov">MOV (QuickTime)</option>
+                                            <option value="webm">WebM</option>
+                                        </select>
+                                    </div>
+                                    <!-- Output Folder -->
+                                    <div class="md:col-span-2 space-y-2">
+                                        <label class="text-xs font-semibold text-slate-400">Output Folder</label>
+                                        <div class="flex gap-2">
+                                            <input class="flex-1 bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Same as source file" type="text" id="inputOutputFolder" readonly/>
+                                            <button class="px-4 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-white/5 hover:border-primary/30 transition-colors text-sm font-medium" id="btnBrowseFolder">Browse</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Video Effects -->
+                                <div class="md:col-span-2 pt-4 border-t border-white/5">
+                                    <div class="flex items-center gap-2 mb-3 cursor-pointer select-none" id="btnToggleEffects">
+                                        <span class="material-symbols-outlined text-primary text-lg">auto_fix_high</span>
+                                        <h3 class="font-bold text-white uppercase tracking-wider text-xs">Video Effects</h3>
+                                        <span class="text-[10px] text-slate-500 ml-1">(randomized per clone)</span>
+                                        <span class="material-symbols-outlined text-slate-500 text-sm ml-auto transition-transform" id="effectsChevron">expand_more</span>
+                                    </div>
+                                    <div id="effectsPanel" class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxBrightness"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Brightness</p>
+                                                <p class="text-[10px] text-slate-500">±5% random</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxContrast"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Contrast</p>
+                                                <p class="text-[10px] text-slate-500">±5% random</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxSaturation"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Saturation</p>
+                                                <p class="text-[10px] text-slate-500">±10% random</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxHue"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Hue Shift</p>
+                                                <p class="text-[10px] text-slate-500">±5° random</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxSharpen"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Sharpen</p>
+                                                <p class="text-[10px] text-slate-500">Subtle sharpen</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxBlur"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Blur</p>
+                                                <p class="text-[10px] text-slate-500">Slight soften</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxNoise"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Noise</p>
+                                                <p class="text-[10px] text-slate-500">Light grain</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxVignette"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Vignette</p>
+                                                <p class="text-[10px] text-slate-500">Dark edges</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxFlip"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Mirror</p>
+                                                <p class="text-[10px] text-slate-500">Horizontal flip</p>
+                                            </div>
+                                        </label>
+                                        <label class="effect-toggle flex items-center gap-2 p-2.5 bg-black rounded-lg border border-white/5 cursor-pointer hover:border-primary/30 transition-all">
+                                            <input type="checkbox" class="accent-primary" id="fxZoom"/>
+                                            <div>
+                                                <p class="text-xs font-semibold text-slate-200">Zoom Crop</p>
+                                                <p class="text-[10px] text-slate-500">1-3% crop in</p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                    <div class="flex items-center gap-2 mt-2">
+                                        <button class="text-[10px] text-primary hover:underline" id="btnSelectAllFx">Select All</button>
+                                        <span class="text-slate-600 text-[10px]">|</span>
+                                        <button class="text-[10px] text-slate-400 hover:underline" id="btnDeselectAllFx">Deselect All</button>
+                                    </div>
+                                    <p class="text-[10px] text-yellow-500/70 mt-2" id="fxWarning" style="display:none">
+                                        <span class="material-symbols-outlined text-[10px] align-middle">warning</span>
+                                        Video effects require re-encoding. "Fast" method will auto-switch to re-encode when effects are enabled.
+                                    </p>
+                                </div>
+
+                                <!-- Background Music -->
+                                <div class="md:col-span-2 pt-4 border-t border-white/5">
+                                    <div class="flex items-center gap-2 mb-3 cursor-pointer select-none" id="btnToggleBgm">
+                                        <span class="material-symbols-outlined text-primary text-lg">music_note</span>
+                                        <h3 class="font-bold text-white uppercase tracking-wider text-xs">Background Music</h3>
+                                        <span class="text-[10px] text-slate-500 ml-1">(optional)</span>
+                                        <span class="material-symbols-outlined text-slate-500 text-sm ml-auto transition-transform" id="bgmChevron">expand_more</span>
+                                    </div>
+                                    <div id="bgmPanel" class="space-y-3">
+                                        <div class="flex gap-2">
+                                            <input class="flex-1 bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary" placeholder="No file selected" type="text" id="inputBgmFile" readonly/>
+                                            <button class="px-4 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-white/5 hover:border-primary/30 transition-colors text-sm font-medium" id="btnBrowseBgm">Browse</button>
+                                            <button class="px-3 py-2.5 text-slate-500 hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-colors hidden" id="btnClearBgm">
+                                                <span class="material-symbols-outlined text-sm">close</span>
+                                            </button>
+                                        </div>
+                                        <div class="space-y-2">
+                                            <div class="flex justify-between items-center">
+                                                <label class="text-xs font-semibold text-slate-400">BGM Volume</label>
+                                                <span class="text-primary font-bold text-sm" id="bgmVolumeLabel">20%</span>
+                                            </div>
+                                            <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary" min="1" max="100" type="range" value="20" id="rangeBgmVolume"/>
+                                            <div class="flex justify-between text-[10px] text-slate-500 font-bold">
+                                                <span>1%</span>
+                                                <span>Soft</span>
+                                                <span>Loud</span>
+                                                <span>100%</span>
+                                            </div>
+                                        </div>
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" class="accent-primary" id="chkBgmLoop" checked/>
+                                            <span class="text-xs text-slate-300">Loop BGM if shorter than video</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Text Overlay -->
+                                <div class="md:col-span-2 pt-4 border-t border-white/5">
+                                    <div class="flex items-center gap-2 mb-3 cursor-pointer select-none" id="btnToggleTextOverlay">
+                                        <span class="material-symbols-outlined text-primary text-lg">text_fields</span>
+                                        <h3 class="font-bold text-white uppercase tracking-wider text-xs">Text Overlay</h3>
+                                        <span class="text-[10px] text-slate-500 ml-1">(optional)</span>
+                                        <span class="material-symbols-outlined text-slate-500 text-sm ml-auto transition-transform" id="textOverlayChevron">expand_more</span>
+                                    </div>
+                                    <div id="textOverlayPanel" class="space-y-3">
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" class="accent-primary" id="chkTextOverlay"/>
+                                            <span class="text-xs text-slate-300">Enable text overlay on video</span>
+                                        </label>
+                                        <div id="textOverlayFields" class="space-y-3" style="display:none">
+                                            <!-- Text Input -->
+                                            <div class="space-y-1">
+                                                <label class="text-xs font-semibold text-slate-400">Text <span class="text-slate-600">(supports multiple lines)</span></label>
+                                                <textarea class="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary resize-none custom-scrollbar" id="inputOverlayText" placeholder="Enter text to overlay...&#10;Line 2...&#10;Line 3..." rows="3" maxlength="300"></textarea>
+                                            </div>
+                                            <!-- Font & Font Size -->
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div class="space-y-1">
+                                                    <label class="text-xs font-semibold text-slate-400">Font</label>
+                                                    <select class="w-full bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none" id="selectTextFont">
+                                                        <option value="arial.ttf" style="font-family:Arial">Arial</option>
+                                                        <option value="arialbd.ttf" style="font-family:Arial">Arial Bold</option>
+                                                        <option value="impact.ttf" style="font-family:Impact">Impact</option>
+                                                        <option value="times.ttf" style="font-family:'Times New Roman'">Times New Roman</option>
+                                                        <option value="timesbd.ttf" style="font-family:'Times New Roman'">Times New Roman Bold</option>
+                                                        <option value="georgia.ttf" style="font-family:Georgia">Georgia</option>
+                                                        <option value="verdana.ttf" style="font-family:Verdana">Verdana</option>
+                                                        <option value="verdanab.ttf" style="font-family:Verdana">Verdana Bold</option>
+                                                        <option value="tahoma.ttf" style="font-family:Tahoma">Tahoma</option>
+                                                        <option value="calibri.ttf" style="font-family:Calibri">Calibri</option>
+                                                        <option value="calibrib.ttf" style="font-family:Calibri">Calibri Bold</option>
+                                                        <option value="comic.ttf" style="font-family:'Comic Sans MS'">Comic Sans</option>
+                                                        <option value="consola.ttf" style="font-family:Consolas">Consolas</option>
+                                                        <option value="trebuc.ttf" style="font-family:'Trebuchet MS'">Trebuchet MS</option>
+                                                        <option value="cour.ttf" style="font-family:'Courier New'">Courier New</option>
+                                                        <option value="segoeui.ttf" style="font-family:'Segoe UI'">Segoe UI</option>
+                                                        <option value="segoeuib.ttf" style="font-family:'Segoe UI'">Segoe UI Bold</option>
+                                                        <option value="bahnschrift.ttf" style="font-family:Bahnschrift">Bahnschrift</option>
+                                                    </select>
+                                                </div>
+                                                <div class="space-y-2">
+                                                    <div class="flex justify-between items-center">
+                                                        <label class="text-xs font-semibold text-slate-400">Font Size</label>
+                                                        <span class="text-primary font-bold text-sm" id="textSizeLabel">24px</span>
+                                                    </div>
+                                                    <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary" min="10" max="80" type="range" value="24" id="rangeTextSize"/>
+                                                    <div class="flex justify-between text-[10px] text-slate-500 font-bold">
+                                                        <span>10px</span>
+                                                        <span>80px</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <!-- Position & Color -->
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div class="space-y-1">
+                                                    <label class="text-xs font-semibold text-slate-400">Position</label>
+                                                    <select class="w-full bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none" id="selectTextPosition">
+                                                        <option value="top-left">Top Left</option>
+                                                        <option value="top-center">Top Center</option>
+                                                        <option value="top-right">Top Right</option>
+                                                        <option value="center">Center</option>
+                                                        <option value="bottom-left" selected>Bottom Left</option>
+                                                        <option value="bottom-center">Bottom Center</option>
+                                                        <option value="bottom-right">Bottom Right</option>
+                                                    </select>
+                                                </div>
+                                                <div class="space-y-1">
+                                                    <label class="text-xs font-semibold text-slate-400">Font Color</label>
+                                                    <div class="flex gap-2 items-center">
+                                                        <input type="color" value="#ffffff" id="inputTextColor" class="w-10 h-10 rounded-lg border border-white/10 bg-black cursor-pointer"/>
+                                                        <span class="text-xs text-slate-400" id="textColorHex">#ffffff</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <!-- Preview -->
+                                            <div class="space-y-1">
+                                                <label class="text-xs font-semibold text-slate-400">Preview</label>
+                                                <div class="text-preview-box bg-black rounded-lg border border-white/10 relative overflow-hidden" id="textPreviewBox">
+                                                    <div class="text-preview-gradient"></div>
+                                                    <span class="text-preview-label" id="textPreviewLabel">Your text here</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p class="text-[10px] text-yellow-500/70 mt-1" id="textOverlayWarning" style="display:none">
+                                            <span class="material-symbols-outlined text-[10px] align-middle">warning</span>
+                                            Text overlay requires re-encoding. "Fast" method will auto-switch to re-encode.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Video Overlay (PiP) -->
+                                <div class="md:col-span-2 pt-4 border-t border-white/5">
+                                    <div class="flex items-center gap-2 mb-3 cursor-pointer select-none" id="btnToggleVideoOverlay">
+                                        <span class="material-symbols-outlined text-primary text-lg">picture_in_picture</span>
+                                        <h3 class="font-bold text-white uppercase tracking-wider text-xs">Video Overlay</h3>
+                                        <span class="text-[10px] text-slate-500 ml-1">(optional)</span>
+                                        <span class="material-symbols-outlined text-slate-500 text-sm ml-auto transition-transform" id="videoOverlayChevron">expand_more</span>
+                                    </div>
+                                    <div id="videoOverlayPanel" class="space-y-3">
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" class="accent-primary" id="chkVideoOverlay"/>
+                                            <span class="text-xs text-slate-300">Enable video overlay (picture-in-picture)</span>
+                                        </label>
+                                        <div id="videoOverlayFields" class="space-y-3" style="display:none">
+                                            <!-- Overlay Video File -->
+                                            <div class="flex gap-2">
+                                                <input class="flex-1 bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary" placeholder="No overlay video selected" type="text" id="inputOverlayVideo" readonly/>
+                                                <button class="px-4 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-white/5 hover:border-primary/30 transition-colors text-sm font-medium" id="btnBrowseOverlayVideo">Browse</button>
+                                                <button class="px-3 py-2.5 text-slate-500 hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-colors hidden" id="btnClearOverlayVideo">
+                                                    <span class="material-symbols-outlined text-sm">close</span>
+                                                </button>
+                                            </div>
+                                            <!-- Size & Position -->
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div class="space-y-2">
+                                                    <div class="flex justify-between items-center">
+                                                        <label class="text-xs font-semibold text-slate-400">Overlay Size</label>
+                                                        <span class="text-primary font-bold text-sm" id="overlayVideoSizeLabel">25%</span>
+                                                    </div>
+                                                    <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary" min="10" max="50" type="range" value="25" id="rangeOverlayVideoSize"/>
+                                                    <div class="flex justify-between text-[10px] text-slate-500 font-bold">
+                                                        <span>10%</span>
+                                                        <span>50%</span>
+                                                    </div>
+                                                </div>
+                                                <div class="space-y-1">
+                                                    <label class="text-xs font-semibold text-slate-400">Position</label>
+                                                    <select class="w-full bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none" id="selectOverlayVideoPosition">
+                                                        <option value="top-left">Top Left</option>
+                                                        <option value="top-right">Top Right</option>
+                                                        <option value="bottom-left" selected>Bottom Left</option>
+                                                        <option value="bottom-right">Bottom Right</option>
+                                                        <option value="center">Center</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <!-- Opacity -->
+                                            <div class="space-y-2">
+                                                <div class="flex justify-between items-center">
+                                                    <label class="text-xs font-semibold text-slate-400">Opacity</label>
+                                                    <span class="text-primary font-bold text-sm" id="overlayVideoOpacityLabel">100%</span>
+                                                </div>
+                                                <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary" min="10" max="100" type="range" value="100" id="rangeOverlayVideoOpacity"/>
+                                                <div class="flex justify-between text-[10px] text-slate-500 font-bold">
+                                                    <span>10%</span>
+                                                    <span>100%</span>
+                                                </div>
+                                            </div>
+                                            <!-- Loop -->
+                                            <label class="flex items-center gap-2 cursor-pointer">
+                                                <input type="checkbox" class="accent-primary" id="chkOverlayVideoLoop" checked/>
+                                                <span class="text-xs text-slate-300">Loop overlay video if shorter than main video</span>
+                                            </label>
+                                        </div>
+                                        <p class="text-[10px] text-yellow-500/70 mt-1" id="videoOverlayWarning" style="display:none">
+                                            <span class="material-symbols-outlined text-[10px] align-middle">warning</span>
+                                            Video overlay requires re-encoding. "Fast" method will auto-switch to re-encode.
+                                        </p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: Clone Engine (2 cols) -->
+                        <div class="lg:col-span-2">
+                            <div class="bg-surface rounded-xl border border-white/5 p-5 shadow-2xl relative overflow-hidden">
+                                <div class="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+                                <h3 class="text-base font-bold text-white mb-5 relative">Clone Engine</h3>
+                                <div class="space-y-5 relative">
+                                    <!-- Clone Count Slider -->
+                                    <div class="space-y-3">
+                                        <div class="flex justify-between items-center">
+                                            <label class="text-sm font-medium text-slate-300">Total Clones</label>
+                                            <span class="text-primary font-bold text-lg" id="cloneCountLabel">10</span>
+                                        </div>
+                                        <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary" max="100" min="1" type="range" value="10" id="rangeCloneCount"/>
+                                        <div class="flex justify-between text-[10px] text-slate-500 font-bold uppercase">
+                                            <span>Min: 1</span>
+                                            <span>Max: 100</span>
+                                        </div>
+                                    </div>
+                                    <!-- Clone Method -->
+                                    <div class="space-y-2 pt-2 border-t border-white/5">
+                                        <label class="text-xs font-semibold text-slate-400">Clone Method</label>
+                                        <select class="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none" id="selectMethod">
+                                            <option value="fast">Fast (metadata + filter)</option>
+                                            <option value="standard">Standard (light re-encode)</option>
+                                        </select>
+                                    </div>
+                                    <!-- Estimates -->
+                                    <div class="pt-3 space-y-3 border-t border-white/5">
+                                        <div class="flex items-center justify-between text-sm">
+                                            <span class="text-slate-400">Estimated Size</span>
+                                            <span class="text-slate-200 font-medium" id="estimateSize">-</span>
+                                        </div>
+                                        <div class="flex items-center justify-between text-sm">
+                                            <span class="text-slate-400">Processing Time</span>
+                                            <span class="text-slate-200 font-medium" id="estimateTime">-</span>
+                                        </div>
+                                    </div>
+                                    <!-- Start / Cancel Button -->
+                                    <button class="w-full py-3.5 bg-primary text-black font-black rounded-xl hover:bg-primary-hover transition-all shadow-xl shadow-primary/30 flex items-center justify-center gap-2 group active:scale-95 mt-2 disabled:opacity-50 disabled:cursor-not-allowed" id="btnStartClone" disabled>
+                                        <span class="material-symbols-outlined group-hover:rotate-12 transition-transform" id="btnStartIcon">rocket_launch</span>
+                                        <span id="btnStartText">START CLONING</span>
+                                    </button>
+                                    <button class="w-full py-3 bg-red-600/20 text-red-400 font-bold rounded-xl border border-red-500/20 hover:bg-red-600/30 transition-all flex items-center justify-center gap-2 hidden" id="btnCancelClone">
+                                        <span class="material-symbols-outlined">cancel</span>
+                                        CANCEL
+                                    </button>
+                                    <button class="w-full py-3 bg-card text-slate-400 font-bold rounded-xl border border-white/10 hover:bg-white/5 hover:border-primary/30 hover:text-primary transition-all flex items-center justify-center gap-2 mt-2" id="btnReset">
+                                        <span class="material-symbols-outlined">restart_alt</span>
+                                        RESET ALL
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== HISTORY VIEW ==================== -->
+            <div class="tab-view hidden" id="tab-history">
+                <div class="p-8 max-w-5xl mx-auto w-full space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div class="space-y-1">
+                            <h1 class="text-2xl font-black text-white tracking-tight">Clone History</h1>
+                            <p class="text-slate-400 text-sm">Review and manage your previous cloning sessions.</p>
+                        </div>
+                        <button class="px-4 py-2 bg-card text-slate-400 rounded-lg border border-white/10 hover:border-red-500/30 hover:text-red-400 transition-colors text-sm font-medium flex items-center gap-2" id="btnClearHistory">
+                            <span class="material-symbols-outlined text-sm">delete_sweep</span>
+                            Clear All
+                        </button>
+                    </div>
+                    <div class="space-y-3" id="historyList">
+                        <!-- History items rendered by JS -->
+                        <div id="historyEmpty" class="text-center py-12">
+                            <span class="material-symbols-outlined text-slate-600 text-5xl mb-3">history</span>
+                            <p class="text-slate-500 text-sm">No cloning history yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- end right panel -->
+
+    </div><!-- end main content -->
+</div><!-- end root -->
+
+<!-- ===== GUIDE / SETTINGS MODAL ===== -->
+<div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden" id="guideModal">
+    <div class="bg-surface border border-white/10 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto custom-scrollbar shadow-2xl">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-5 border-b border-white/5 sticky top-0 bg-surface/95 backdrop-blur-md z-10 rounded-t-2xl">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">help_outline</span>
+                Guide & Settings
+            </h2>
+            <button class="p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-white/10" id="btnCloseGuide">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+
+        <div class="p-6 space-y-6">
+            <!-- Quick Guide -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Quick Guide</h3>
+                <div class="space-y-3">
+                    <div class="flex items-start gap-3">
+                        <div class="size-7 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                            <span class="text-primary font-black text-xs">1</span>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-white">Upload Video</p>
+                            <p class="text-xs text-slate-400">Drag & drop or browse for a video file (MP4, MKV, AVI, MOV, WebM).</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <div class="size-7 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                            <span class="text-primary font-black text-xs">2</span>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-white">Configure Settings</p>
+                            <p class="text-xs text-slate-400">Set naming template, output folder, format, and number of clones.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <div class="size-7 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                            <span class="text-primary font-black text-xs">3</span>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-white">Start Cloning</p>
+                            <p class="text-xs text-slate-400">Click "START CLONING" and monitor progress in the Task Queue panel.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-white/5"/>
+
+            <!-- Clone Method Comparison -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Clone Method Comparison</h3>
+                <div class="space-y-3">
+                    <div class="bg-black/50 rounded-xl p-4 border border-primary/10">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="material-symbols-outlined text-primary text-lg">bolt</span>
+                            <h4 class="text-sm font-bold text-white">Fast (Metadata + Filter)</h4>
+                        </div>
+                        <ul class="text-xs text-slate-400 space-y-1 ml-7 list-disc">
+                            <li>Video stream di-copy tanpa re-encode — <span class="text-green-400">kualitas 100% identik</span></li>
+                            <li>Audio di re-encode dengan noise sangat kecil (imperceptible)</li>
+                            <li>Metadata unik per clone (comment, title, creation_time)</li>
+                            <li>Kecepatan: <span class="text-primary font-semibold">~3-5 detik</span> per clone (video 1 menit)</li>
+                            <li>Cocok untuk: upload ke banyak platform dengan cepat</li>
+                        </ul>
+                    </div>
+                    <div class="bg-black/50 rounded-xl p-4 border border-white/5">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="material-symbols-outlined text-primary text-lg">precision_manufacturing</span>
+                            <h4 class="text-sm font-bold text-white">Standard (Light Re-encode)</h4>
+                        </div>
+                        <ul class="text-xs text-slate-400 space-y-1 ml-7 list-disc">
+                            <li>Video di re-encode penuh dengan CRF 18 — <span class="text-green-400">visually lossless</span></li>
+                            <li>Noise filter kecil ditambahkan ke video (tidak terlihat mata)</li>
+                            <li>Audio juga di re-encode dengan noise imperceptible</li>
+                            <li>Kecepatan: <span class="text-primary font-semibold">~40-50 detik</span> per clone (video 1 menit)</li>
+                            <li>Binary setiap clone <span class="text-primary font-semibold">sangat berbeda</span> satu sama lain</li>
+                            <li>Cocok untuk: menghindari deteksi duplikat yang ketat</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-white/5"/>
+
+            <!-- FFmpeg Config -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">FFmpeg Configuration</h3>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">FFmpeg Path</p>
+                            <p class="text-xs text-slate-500">Path to portable FFmpeg executable</p>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <input class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary w-56" type="text" id="settingsFFmpegPath"/>
+                            <button class="px-3 py-2 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-white/5 transition-colors text-xs font-medium" id="btnBrowseFFmpeg">Browse</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-white/5"/>
+
+            <!-- Defaults -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Default Values</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Default Clone Count</p>
+                            <p class="text-xs text-slate-500">Number of clones generated by default</p>
+                        </div>
+                        <input class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary w-20 text-center" type="number" id="settingsCloneCount" value="10" min="1" max="100"/>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Default Output Format</p>
+                            <p class="text-xs text-slate-500">Default format for cloned videos</p>
+                        </div>
+                        <select class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none w-32" id="settingsFormat">
+                            <option value="mp4">MP4</option>
+                            <option value="mkv">MKV</option>
+                            <option value="avi">AVI</option>
+                            <option value="mov">MOV</option>
+                            <option value="webm">WebM</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Default Naming Template</p>
+                            <p class="text-xs text-slate-500">Template pattern for output file names</p>
+                        </div>
+                        <input class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary w-56" type="text" id="settingsTemplate"/>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-white/5"/>
+
+            <!-- Notifications -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Notifications</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Pop-up Notification</p>
+                            <p class="text-xs text-slate-500">Show dialog when cloning completes</p>
+                        </div>
+                        <button class="w-11 h-6 rounded-full relative transition-colors toggle-btn" id="togglePopup" data-key="notify_popup">
+                            <span class="absolute size-4 bg-white rounded-full top-1 left-1 transition-transform shadow-md"></span>
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Sound Notification</p>
+                            <p class="text-xs text-slate-500">Play sound when cloning completes</p>
+                        </div>
+                        <button class="w-11 h-6 rounded-full relative transition-colors toggle-btn" id="toggleSound" data-key="notify_sound">
+                            <span class="absolute size-4 bg-white rounded-full top-1 left-1 transition-transform shadow-md"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="pt-2">
+                <button class="w-full py-3 bg-primary text-black font-bold rounded-xl hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 active:scale-95" id="btnSaveSettings">
+                    Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== COMPLETION MODAL ===== -->
+<div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden" id="completeModal">
+    <div class="bg-surface border border-white/10 rounded-2xl w-full max-w-md shadow-2xl p-8 text-center">
+        <div class="size-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span class="material-symbols-outlined text-green-500 text-4xl">check_circle</span>
+        </div>
+        <h2 class="text-xl font-bold text-white mb-2">Cloning Complete!</h2>
+        <p class="text-sm text-slate-400 mb-2" id="completeMessage">10 clones generated successfully.</p>
+        <p class="text-xs text-slate-500 mb-6" id="completeTime">Total time: 30.5s</p>
+        <div class="flex gap-3">
+            <button class="flex-1 py-3 bg-primary text-black font-bold rounded-xl hover:bg-primary-hover transition-all active:scale-95" id="btnOpenFolder">
+                Open Folder
+            </button>
+            <button class="flex-1 py-3 bg-card text-slate-200 rounded-xl border border-white/10 hover:bg-white/5 transition-colors font-medium" id="btnCloseComplete">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+
+
+<script src="app.js"></script>
+
+</body>
+</html>

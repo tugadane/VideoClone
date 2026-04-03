@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;900&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    primary: "#ff5c00",
+                    "primary-hover": "#ff7a2e",
+                    "bg-dark": "#000000",
+                    "surface": "#0a0a0a",
+                    "card": "#111111",
+                    "input-bg": "#1a1a1a",
+                    "success": "#00c853",
+                    "error": "#ff1744",
+                },
+                fontFamily: {
+                    display: ["Work Sans", "sans-serif"]
+                }
+            }
+        }
+    };
+</script>
+<title>Clone Studio v0.1.0 — UI Preview</title>
+</head>
+<body class="bg-bg-dark font-display text-slate-100 min-h-screen">
+
+<div class="flex flex-col h-screen overflow-hidden">
+
+    <!-- ===== TOP BAR ===== -->
+    <header class="h-14 border-b border-primary/10 px-6 flex items-center justify-between shrink-0 bg-black/90 backdrop-blur-md z-20">
+        <!-- Left: Logo -->
+        <div class="flex items-center gap-3">
+            <div class="size-9 bg-gradient-to-br from-primary to-orange-800 rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
+                <span class="material-symbols-outlined text-white text-lg">layers</span>
+            </div>
+            <div class="flex flex-col">
+                <h1 class="text-slate-100 text-sm font-bold leading-tight">Clone Studio</h1>
+                <p class="text-primary text-[9px] font-bold uppercase tracking-widest">Video Cloner</p>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold uppercase border border-primary/20 ml-2">v0.1.0</span>
+        </div>
+
+        <!-- Right: Icon buttons -->
+        <div class="flex items-center gap-1">
+            <button class="topbar-btn p-2.5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all rounded-lg relative" data-tab="history" title="Clone History">
+                <span class="material-symbols-outlined text-xl">history</span>
+            </button>
+            <button class="p-2.5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all rounded-lg" title="Guide" onclick="document.getElementById('guideModal').classList.toggle('hidden')">
+                <span class="material-symbols-outlined text-xl">help_outline</span>
+            </button>
+            <div class="h-6 w-[1px] bg-white/10 mx-1"></div>
+            <button class="p-2 text-slate-400 hover:text-slate-200 transition-colors" title="Minimize">
+                <span class="material-symbols-outlined text-lg">minimize</span>
+            </button>
+            <button class="p-2 text-slate-400 hover:text-slate-200 transition-colors" title="Maximize">
+                <span class="material-symbols-outlined text-lg">crop_square</span>
+            </button>
+            <button class="p-2 text-slate-400 hover:text-red-500 transition-colors" title="Close">
+                <span class="material-symbols-outlined text-lg">close</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- ===== LEFT PANEL: Task Queue ===== -->
+        <aside class="w-80 border-r border-white/5 bg-surface flex flex-col shrink-0">
+            <!-- Task Queue Header -->
+            <div class="p-5 border-b border-white/5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-sm">queue</span>
+                        Task Queue
+                    </h3>
+                    <span class="text-xs text-slate-400">6/10</span>
+                </div>
+                <!-- Progress Bar -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between text-[11px] text-slate-400">
+                        <span>Processing clone #7...</span>
+                        <span class="text-primary font-bold">60%</span>
+                    </div>
+                    <div class="w-full bg-black h-1.5 rounded-full overflow-hidden border border-white/5">
+                        <div class="bg-gradient-to-r from-orange-600 to-primary h-full rounded-full shadow-[0_0_10px_rgba(255,92,0,0.3)]" style="width: 60%"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 text-right">~18s remaining</p>
+                </div>
+            </div>
+
+            <!-- Clone List -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1.5">
+                <!-- Done -->
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                    <span class="material-symbols-outlined text-green-500 text-base">check_circle</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-300 truncate">my_video_tutorial_clone01_2026-03-10.mp4</p>
+                    </div>
+                    <span class="text-[10px] text-slate-500 shrink-0">3.2s</span>
+                </div>
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                    <span class="material-symbols-outlined text-green-500 text-base">check_circle</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-300 truncate">my_video_tutorial_clone02_2026-03-10.mp4</p>
+                    </div>
+                    <span class="text-[10px] text-slate-500 shrink-0">2.8s</span>
+                </div>
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                    <span class="material-symbols-outlined text-green-500 text-base">check_circle</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-300 truncate">my_video_tutorial_clone03_2026-03-10.mp4</p>
+                    </div>
+                    <span class="text-[10px] text-slate-500 shrink-0">3.1s</span>
+                </div>
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                    <span class="material-symbols-outlined text-green-500 text-base">check_circle</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-300 truncate">my_video_tutorial_clone04_2026-03-10.mp4</p>
+                    </div>
+                    <span class="text-[10px] text-slate-500 shrink-0">2.9s</span>
+                </div>
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                    <span class="material-symbols-outlined text-green-500 text-base">check_circle</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-300 truncate">my_video_tutorial_clone05_2026-03-10.mp4</p>
+                    </div>
+                    <span class="text-[10px] text-slate-500 shrink-0">3.0s</span>
+                </div>
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                    <span class="material-symbols-outlined text-green-500 text-base">check_circle</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-300 truncate">my_video_tutorial_clone06_2026-03-10.mp4</p>
+                    </div>
+                    <span class="text-[10px] text-slate-500 shrink-0">3.4s</span>
+                </div>
+                <!-- In Progress -->
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/30">
+                    <div class="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-100 truncate">my_video_tutorial_clone07_2026-03-10.mp4</p>
+                    </div>
+                    <span class="text-[10px] text-primary font-bold shrink-0">In Progress</span>
+                </div>
+                <!-- Waiting -->
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/5 opacity-40">
+                    <span class="material-symbols-outlined text-slate-500 text-base">hourglass_empty</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-500 truncate">my_video_tutorial_clone08_2026-03-10.mp4</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/5 opacity-40">
+                    <span class="material-symbols-outlined text-slate-500 text-base">hourglass_empty</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-500 truncate">my_video_tutorial_clone09_2026-03-10.mp4</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/5 opacity-40">
+                    <span class="material-symbols-outlined text-slate-500 text-base">hourglass_empty</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-slate-500 truncate">my_video_tutorial_clone10_2026-03-10.mp4</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FFmpeg Status -->
+            <div class="p-3 border-t border-white/5">
+                <div class="bg-black/50 p-3 rounded-lg flex items-center gap-2">
+                    <div class="size-2 bg-green-500 rounded-full shadow-[0_0_6px_rgba(0,200,83,0.5)]"></div>
+                    <p class="text-[10px] text-slate-400">FFmpeg 6.1 · <span class="text-green-500 font-semibold">Ready</span></p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ===== RIGHT PANEL: Main Content ===== -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar">
+
+            <!-- ==================== CLONE VIEW (default) ==================== -->
+            <div class="tab-view" id="tab-clone">
+                <div class="p-8 max-w-5xl mx-auto w-full space-y-6">
+                    <!-- Title -->
+                    <div class="space-y-1">
+                        <h1 class="text-2xl font-black text-white tracking-tight">Video Cloner</h1>
+                        <p class="text-slate-400 text-sm">Generate visually identical clones with unique binary signatures.</p>
+                    </div>
+
+                    <!-- Drop Zone -->
+                    <div class="relative group" id="dropZone">
+                        <div class="absolute -inset-0.5 bg-gradient-to-r from-primary/40 to-orange-600/20 rounded-xl blur opacity-10 group-hover:opacity-30 transition duration-500"></div>
+                        <div class="relative bg-surface border-2 border-dashed border-primary/20 rounded-xl p-10 flex flex-col items-center justify-center text-center hover:border-primary transition-colors cursor-pointer">
+                            <div class="size-14 bg-primary/10 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                <span class="material-symbols-outlined text-primary text-3xl">movie_edit</span>
+                            </div>
+                            <h3 class="text-base font-bold text-white mb-1">Upload Source Video</h3>
+                            <p class="text-slate-400 text-sm max-w-xs mx-auto mb-5">Drag and drop your video file here, or click to browse.</p>
+                            <button class="px-6 py-2.5 bg-primary text-black font-bold rounded-lg hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 active:scale-95">
+                                Select Video File
+                            </button>
+                            <p class="text-slate-500 text-xs mt-3">Supports MP4, MKV, AVI, MOV, WebM</p>
+                        </div>
+                    </div>
+
+                    <!-- File Info (shown after file is selected) -->
+                    <div class="bg-surface rounded-xl border border-white/5 p-4 shadow-2xl" id="fileInfo">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-3">
+                                <div class="size-9 bg-primary/10 rounded-lg flex items-center justify-center">
+                                    <span class="material-symbols-outlined text-primary text-lg">videocam</span>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-sm text-white">my_video_tutorial.mp4</p>
+                                    <p class="text-xs text-slate-400">24.8 MB</p>
+                                </div>
+                            </div>
+                            <button class="p-1.5 text-slate-500 hover:text-red-500 transition-colors rounded-lg hover:bg-red-500/10">
+                                <span class="material-symbols-outlined text-sm">close</span>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-4 gap-2">
+                            <div class="bg-black rounded-lg p-3">
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Duration</p>
+                                <p class="text-sm font-semibold text-white mt-0.5">01:12</p>
+                            </div>
+                            <div class="bg-black rounded-lg p-3">
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Resolution</p>
+                                <p class="text-sm font-semibold text-white mt-0.5">1920×1080</p>
+                            </div>
+                            <div class="bg-black rounded-lg p-3">
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Codec</p>
+                                <p class="text-sm font-semibold text-white mt-0.5">H.264</p>
+                            </div>
+                            <div class="bg-black rounded-lg p-3">
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Bitrate</p>
+                                <p class="text-sm font-semibold text-white mt-0.5">2.8 Mbps</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                        <!-- LEFT: File Configuration (3 cols) -->
+                        <div class="lg:col-span-3">
+                            <div class="bg-surface rounded-xl border border-white/5 p-5 space-y-5 shadow-2xl">
+                                <div class="flex items-center gap-2 border-b border-white/5 pb-3">
+                                    <span class="material-symbols-outlined text-primary text-lg">settings</span>
+                                    <h3 class="font-bold text-white uppercase tracking-wider text-xs">File Configuration</h3>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <!-- Naming Template -->
+                                    <div class="space-y-2">
+                                        <label class="text-xs font-semibold text-slate-400">Naming Template</label>
+                                        <input class="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary transition-all" type="text" value="{title}_clone{index}_{date}"/>
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <span class="px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all">{title}</span>
+                                            <span class="px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all">{index}</span>
+                                            <span class="px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all">{date}</span>
+                                            <span class="px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all">{time}</span>
+                                            <span class="px-2 py-0.5 bg-primary/10 border border-primary/20 rounded-full text-[10px] text-primary cursor-pointer hover:bg-primary hover:text-black transition-all">{rand}</span>
+                                        </div>
+                                        <div class="bg-black/50 rounded-md px-3 py-2">
+                                            <p class="text-[11px] text-slate-500">Preview: <span class="text-primary font-medium">my_video_tutorial_clone01_2026-03-10.mp4</span></p>
+                                        </div>
+                                    </div>
+                                    <!-- Output Format -->
+                                    <div class="space-y-2">
+                                        <label class="text-xs font-semibold text-slate-400">Output Format</label>
+                                        <select class="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none">
+                                            <option>MP4 (default)</option>
+                                            <option>MKV (Matroska)</option>
+                                            <option>AVI</option>
+                                            <option>MOV (QuickTime)</option>
+                                            <option>WebM</option>
+                                        </select>
+                                    </div>
+                                    <!-- Output Folder -->
+                                    <div class="md:col-span-2 space-y-2">
+                                        <label class="text-xs font-semibold text-slate-400">Output Folder</label>
+                                        <div class="flex gap-2">
+                                            <input class="flex-1 bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Same as source file" type="text" value="C:\Users\Egov\Videos\"/>
+                                            <button class="px-4 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-white/5 hover:border-primary/30 transition-colors text-sm font-medium">Browse</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: Clone Engine (2 cols) -->
+                        <div class="lg:col-span-2">
+                            <div class="bg-surface rounded-xl border border-white/5 p-5 shadow-2xl relative overflow-hidden">
+                                <div class="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+                                <h3 class="text-base font-bold text-white mb-5 relative">Clone Engine</h3>
+                                <div class="space-y-5 relative">
+                                    <!-- Clone Count Slider -->
+                                    <div class="space-y-3">
+                                        <div class="flex justify-between items-center">
+                                            <label class="text-sm font-medium text-slate-300">Total Clones</label>
+                                            <span class="text-primary font-bold text-lg" id="cloneCountLabel">10</span>
+                                        </div>
+                                        <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary" max="100" min="1" type="range" value="10"
+                                            oninput="document.getElementById('cloneCountLabel').textContent=this.value"/>
+                                        <div class="flex justify-between text-[10px] text-slate-500 font-bold uppercase">
+                                            <span>Min: 1</span>
+                                            <span>Max: 100</span>
+                                        </div>
+                                    </div>
+                                    <!-- Clone Method -->
+                                    <div class="space-y-2 pt-2 border-t border-white/5">
+                                        <label class="text-xs font-semibold text-slate-400">Clone Method</label>
+                                        <select class="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none">
+                                            <option>Fast (metadata + filter)</option>
+                                            <option>Standard (light re-encode)</option>
+                                        </select>
+                                    </div>
+                                    <!-- Estimates -->
+                                    <div class="pt-3 space-y-3 border-t border-white/5">
+                                        <div class="flex items-center justify-between text-sm">
+                                            <span class="text-slate-400">Estimated Size</span>
+                                            <span class="text-slate-200 font-medium">248 MB</span>
+                                        </div>
+                                        <div class="flex items-center justify-between text-sm">
+                                            <span class="text-slate-400">Processing Time</span>
+                                            <span class="text-slate-200 font-medium">~ 30s</span>
+                                        </div>
+                                    </div>
+                                    <!-- Start Button -->
+                                    <button class="w-full py-3.5 bg-primary text-black font-black rounded-xl hover:bg-primary-hover transition-all shadow-xl shadow-primary/30 flex items-center justify-center gap-2 group active:scale-95 mt-2">
+                                        <span class="material-symbols-outlined group-hover:rotate-12 transition-transform">rocket_launch</span>
+                                        START CLONING
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== HISTORY VIEW ==================== -->
+            <div class="tab-view hidden" id="tab-history">
+                <div class="p-8 max-w-5xl mx-auto w-full space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div class="space-y-1">
+                            <h1 class="text-2xl font-black text-white tracking-tight">Clone History</h1>
+                            <p class="text-slate-400 text-sm">Review and manage your previous cloning sessions.</p>
+                        </div>
+                        <button class="px-4 py-2 bg-card text-slate-400 rounded-lg border border-white/10 hover:border-red-500/30 hover:text-red-400 transition-colors text-sm font-medium flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm">delete_sweep</span>
+                            Clear All
+                        </button>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="bg-surface rounded-xl border border-white/5 p-5 flex items-center justify-between hover:border-primary/20 transition-colors">
+                            <div class="flex items-center gap-4">
+                                <div class="size-11 bg-primary/10 rounded-lg flex items-center justify-center">
+                                    <span class="material-symbols-outlined text-primary">videocam</span>
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-semibold text-white">product_review_final.mp4</h4>
+                                    <p class="text-xs text-slate-500 mt-1 flex items-center gap-3">
+                                        <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">calendar_today</span> 2026-03-10 14:30</span>
+                                        <span>45.2 MB</span>
+                                        <span>01:05</span>
+                                        <span class="text-primary">Fast</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-2xl font-black text-primary">10</p>
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">clones</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-surface rounded-xl border border-white/5 p-5 flex items-center justify-between hover:border-primary/20 transition-colors">
+                            <div class="flex items-center gap-4">
+                                <div class="size-11 bg-primary/10 rounded-lg flex items-center justify-center">
+                                    <span class="material-symbols-outlined text-primary">videocam</span>
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-semibold text-white">tutorial_part1.mp4</h4>
+                                    <p class="text-xs text-slate-500 mt-1 flex items-center gap-3">
+                                        <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">calendar_today</span> 2026-03-09 09:15</span>
+                                        <span>32.1 MB</span>
+                                        <span>00:58</span>
+                                        <span class="text-primary">Standard</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-2xl font-black text-primary">5</p>
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">clones</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-surface rounded-xl border border-white/5 p-5 flex items-center justify-between hover:border-primary/20 transition-colors">
+                            <div class="flex items-center gap-4">
+                                <div class="size-11 bg-primary/10 rounded-lg flex items-center justify-center">
+                                    <span class="material-symbols-outlined text-primary">videocam</span>
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-semibold text-white">promo_video_v2.mp4</h4>
+                                    <p class="text-xs text-slate-500 mt-1 flex items-center gap-3">
+                                        <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">calendar_today</span> 2026-03-08 17:42</span>
+                                        <span>18.7 MB</span>
+                                        <span>00:32</span>
+                                        <span class="text-primary">Fast</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-2xl font-black text-primary">20</p>
+                                <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">clones</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== SETTINGS VIEW (inside Guide modal) ==================== -->
+
+        </div><!-- end right panel -->
+
+    </div><!-- end main content -->
+</div><!-- end root -->
+
+<!-- ===== GUIDE / SETTINGS MODAL ===== -->
+<div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden" id="guideModal">
+    <div class="bg-surface border border-white/10 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto custom-scrollbar shadow-2xl">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-5 border-b border-white/5 sticky top-0 bg-surface/95 backdrop-blur-md z-10 rounded-t-2xl">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">help_outline</span>
+                Guide & Settings
+            </h2>
+            <button class="p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-white/10" onclick="document.getElementById('guideModal').classList.add('hidden')">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+
+        <div class="p-6 space-y-6">
+            <!-- Quick Guide -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Quick Guide</h3>
+                <div class="space-y-3">
+                    <div class="flex items-start gap-3">
+                        <div class="size-7 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                            <span class="text-primary font-black text-xs">1</span>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-white">Upload Video</p>
+                            <p class="text-xs text-slate-400">Drag & drop or browse for a video file (MP4, MKV, AVI, MOV, WebM).</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <div class="size-7 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                            <span class="text-primary font-black text-xs">2</span>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-white">Configure Settings</p>
+                            <p class="text-xs text-slate-400">Set naming template, output folder, format, and number of clones.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <div class="size-7 bg-primary/10 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                            <span class="text-primary font-black text-xs">3</span>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-white">Start Cloning</p>
+                            <p class="text-xs text-slate-400">Click "START CLONING" and monitor progress in the Task Queue panel.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-white/5"/>
+
+            <!-- Settings Section -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">FFmpeg Configuration</h3>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">FFmpeg Path</p>
+                            <p class="text-xs text-slate-500">Path to portable FFmpeg executable</p>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <input class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary w-56" type="text" value="./ffmpeg/ffmpeg.exe"/>
+                            <button class="px-3 py-2 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-white/5 transition-colors text-xs font-medium">Browse</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-white/5"/>
+
+            <!-- Defaults -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Default Values</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Default Clone Count</p>
+                            <p class="text-xs text-slate-500">Number of clones generated by default</p>
+                        </div>
+                        <input class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary w-20 text-center" type="number" value="10" min="1" max="100"/>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Default Output Format</p>
+                            <p class="text-xs text-slate-500">Default format for cloned videos</p>
+                        </div>
+                        <select class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none w-32">
+                            <option>MP4</option>
+                            <option>MKV</option>
+                            <option>AVI</option>
+                            <option>MOV</option>
+                            <option>WebM</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Default Naming Template</p>
+                            <p class="text-xs text-slate-500">Template pattern for output file names</p>
+                        </div>
+                        <input class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary w-56" type="text" value="{title}_clone{index}_{date}"/>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-white/5"/>
+
+            <!-- Notifications -->
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Notifications</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Pop-up Notification</p>
+                            <p class="text-xs text-slate-500">Show dialog when cloning completes</p>
+                        </div>
+                        <button class="w-11 h-6 bg-primary rounded-full relative transition-colors toggle-btn" onclick="toggleSwitch(this)">
+                            <span class="absolute size-4 bg-white rounded-full top-1 left-1 transition-transform translate-x-5 shadow-md"></span>
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-white font-medium">Sound Notification</p>
+                            <p class="text-xs text-slate-500">Play sound when cloning completes</p>
+                        </div>
+                        <button class="w-11 h-6 bg-primary rounded-full relative transition-colors toggle-btn" onclick="toggleSwitch(this)">
+                            <span class="absolute size-4 bg-white rounded-full top-1 left-1 transition-transform translate-x-5 shadow-md"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 92, 0, 0.2); border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 92, 0, 0.5); }
+    input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px; height: 16px;
+        background: #ff5c00;
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 8px rgba(255, 92, 0, 0.4);
+    }
+    .tab-view { display: none; }
+    .tab-view:not(.hidden) { display: block; }
+</style>
+
+<script>
+    // Tab switching (Clone <-> History via top bar)
+    document.querySelectorAll('.topbar-btn[data-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            const isAlreadyActive = !document.getElementById('tab-' + tab).classList.contains('hidden');
+
+            // Hide all tabs
+            document.querySelectorAll('.tab-view').forEach(v => v.classList.add('hidden'));
+
+            if (isAlreadyActive) {
+                // Toggle back to clone view
+                document.getElementById('tab-clone').classList.remove('hidden');
+                btn.classList.remove('text-primary', 'bg-primary/10');
+                btn.classList.add('text-slate-400');
+            } else {
+                // Show selected tab
+                document.getElementById('tab-' + tab).classList.remove('hidden');
+                // Highlight button
+                document.querySelectorAll('.topbar-btn[data-tab]').forEach(b => {
+                    b.classList.remove('text-primary', 'bg-primary/10');
+                    b.classList.add('text-slate-400');
+                });
+                btn.classList.add('text-primary', 'bg-primary/10');
+                btn.classList.remove('text-slate-400');
+            }
+        });
+    });
+
+    // Initialize: show clone tab
+    document.getElementById('tab-clone').classList.remove('hidden');
+
+    // Toggle switch
+    function toggleSwitch(el) {
+        const isActive = el.classList.contains('bg-primary');
+        if (isActive) {
+            el.classList.remove('bg-primary');
+            el.classList.add('bg-white/10');
+            el.querySelector('span').classList.remove('translate-x-5');
+        } else {
+            el.classList.add('bg-primary');
+            el.classList.remove('bg-white/10');
+            el.querySelector('span').classList.add('translate-x-5');
+        }
+    }
+</script>
+
+</body>
+</html>

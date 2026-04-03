@@ -1,0 +1,10 @@
+{
+  "ffmpeg_path": "ffmpeg.exe",
+  "default_clone_count": 10,
+  "default_format": "mp4",
+  "default_template": "{title}_clone{index}_{date}",
+  "default_output_folder": "hasil",
+  "default_method": "fast",
+  "notify_popup": true,
+  "notify_sound": true
+}

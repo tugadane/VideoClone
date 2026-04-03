@@ -1,0 +1,120 @@
+# Changelog — Clone Studio
+
+Semua perubahan penting pada proyek ini akan didokumentasikan di file ini.
+
+Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+---
+
+## [v0.3.1] — 2026-04-02
+
+### Changed
+- Menetapkan aturan wajib rilis: setiap perubahan harus punya catatan Markdown dan bump versi.
+- Menyinkronkan versi aplikasi ke `v0.3.1` pada file berikut:
+  - `installer.iss`
+  - `src/main.py`
+  - `src/web/index.html`
+  - `docs/README.md`
+
+### Added
+- `docs/RELEASE_PROCESS.md` sebagai SOP versioning + changelog.
+- `docs/changes/2026-04-02-v0.3.1.md` sebagai catatan perubahan per update.
+
+---
+
+## [v0.1.0] — 2026-03-10
+
+### Phase: Diskusi & UI Preview
+
+#### Added
+- Diskusi spesifikasi proyek lengkap
+  - Nama: Clone Studio
+  - Stack: Python 3.13 + pywebview + FFmpeg (portable)
+  - Theme: Black (#000000) + Orange (#ff5c00)
+  - Fitur: clone video, naming template, output config, progress, history, notifikasi
+- UI Preview v1 (`ui_preview.html`)
+  - Layout sidebar kiri (icon-only) + konten kanan
+  - Tab: Clone, History, Settings
+  - Custom CSS styling
+- Referensi desain dari Google Stitch (`stitch_reference.html`)
+  - Mengadopsi gaya: Tailwind CSS, Work Sans font, Material Symbols, gradient glow
+- UI Preview v2 (`ui_preview_v2.html`) — **APPROVED**
+  - Sidebar menu dihapus
+  - Task Queue dipindah ke panel kiri (permanen)
+  - History sebagai icon toggle di top bar
+  - Guide & Settings digabung dalam modal popup
+  - Layout: Top Bar → [Task Queue | Main Content]
+- Dokumentasi proyek
+  - `docs/README.md` — spesifikasi lengkap
+  - `docs/CHANGELOG.md` — file ini
+  - `docs/DEVELOPMENT.md` — panduan teknis implementasi
+
+#### Keputusan Desain
+- Sidebar menu tidak diperlukan karena fitur tidak banyak
+- Task Queue selalu visible di kiri agar user bisa monitor progress
+- Settings & Guide digabung dalam 1 modal popup
+- History cukup sebagai icon toggle di top bar
+- Clone method: Fast (metadata + filter) dan Standard (light re-encode)
+- Konflik nama file: auto-rename dengan suffix angka
+- Notifikasi: pop-up + suara (keduanya default ON)
+
+---
+
+## [v0.2.0] — 2026-03-10
+
+### Phase: Backend Implementation
+
+#### Added
+- `src/config.py` — Config class, load/save JSON, default values
+- `src/history.py` — History class, add/get_all/clear, UUID entries
+- `src/cloner.py` — VideoCloner class with threading
+  - Fast method: video copy + audio re-encode with imperceptible noise
+  - Standard method: full re-encode CRF 18 + noise filters
+  - Progress tracking with per-clone timing and ETA
+  - Auto-rename on filename collision
+  - `get_video_info()` via ffprobe
+  - `check_ffmpeg()` version detection
+- `src/api.py` — API class exposed to pywebview JS
+  - File dialogs (video, folder, FFmpeg path)
+  - Cloning control (start, cancel, progress polling)
+  - Config & History management
+  - Window controls (minimize, maximize, close)
+  - Notification sound via winsound
+- `src/main.py` — pywebview entry point (1280x800, frameless)
+- `requirements.txt` — pywebview>=5.0
+
+---
+
+## [v0.3.0] — 2026-03-10
+
+### Phase: Frontend Implementation
+
+#### Added
+- `src/web/index.html` — Functional UI converted from ui_preview_v2.html
+  - Custom title bar with drag region
+  - Left panel: Task Queue with real-time progress
+  - Right panel: Clone view + History view (tab toggle)
+  - Guide & Settings modal with all config options
+  - Completion modal with "Open Folder" action
+  - Drag & drop zone for video files
+- `src/web/app.js` — Frontend logic
+  - pywebview API bridge (all method calls)
+  - Progress polling every 500ms
+  - Dynamic task queue rendering (done/processing/waiting)
+  - Template preview with live variable substitution
+  - Estimate calculator (size & time)
+  - History list rendering
+  - Settings load/save with toggle switches
+  - FFmpeg status indicator
+
+---
+
+## Rencana Versi Berikutnya
+
+### [v0.4.0] — TBD
+- Integrasi frontend ↔ backend
+- Testing end-to-end
+- Bug fixes
+
+### [v1.0.0] — TBD
+- Release pertama yang fully functional
