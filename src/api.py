@@ -13,6 +13,27 @@ from history import History
 from cloner import VideoCloner, get_video_info, check_ffmpeg
 
 
+def _safe_filename(text, fallback='video', max_len=60):
+    """Sanitize text for use as a filename component.
+
+    Strips non-ASCII chars (emojis especially), Windows-reserved chars,
+    control chars, and trailing dots/spaces. Falls back to ``fallback``
+    if the result is empty.
+
+    Why ASCII-only: ffprobe.exe / ffmpeg.exe on Windows convert command-line
+    args from UTF-16 to the system codepage (e.g. CP1252) before opening
+    the file. Emoji and other supplementary-plane chars become '?' and the
+    open fails, so the downloaded video is rejected as "not a valid video".
+    """
+    text = text or ''
+    cleaned = re.sub(r'[^\x20-\x7E]', '', text)
+    cleaned = re.sub(r'[<>:"/\\|?*\n\r\t]', '', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip().strip('.').strip()
+    if max_len > 0:
+        cleaned = cleaned[:max_len].rstrip().rstrip('.').rstrip()
+    return cleaned or fallback
+
+
 class Api:
     def __init__(self):
         self._window = None
@@ -265,9 +286,8 @@ class Api:
 
         # Build filename from title or ID
         video_id = video_data.get('id', 'tiktok_video')
-        title = video_data.get('title', '')[:50].strip()
-        # Sanitize title for filename
-        safe_title = re.sub(r'[<>:"/\\|?*]', '', title).strip() or video_id
+        title = video_data.get('title', '')
+        safe_title = _safe_filename(title, fallback=str(video_id), max_len=60)
         filename = f'tiktok_{safe_title}.mp4'
 
         filepath = os.path.join(download_dir, filename)
@@ -386,6 +406,7 @@ class Api:
             'progress_hooks': [progress_hook],
             'merge_output_format': 'mp4',
             'source_address': '0.0.0.0',
+            'restrictfilenames': True,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             },
@@ -491,6 +512,7 @@ class Api:
             'progress_hooks': [progress_hook],
             'merge_output_format': 'mp4',
             'source_address': '0.0.0.0',
+            'restrictfilenames': True,
         }
 
         try:
@@ -525,15 +547,15 @@ class Api:
 
             self._shopee_progress = {'status': 'resolving', 'percent': 0, 'downloaded_mb': 0}
 
-            filepath = self._shopee_download(url, download_dir)
+            filepath, err = self._shopee_download(url, download_dir)
             if not filepath:
-                return {'error': 'Failed to download Shopee video. Make sure the link is valid and the video is public.'}
+                return {'error': err or 'Failed to download Shopee video. Make sure the link is valid and the video is public.'}
 
             info = self.get_video_info(filepath)
             if info:
                 info['source_platform'] = 'shopee'
                 return info
-            return {'error': 'Downloaded file is not a valid video'}
+            return {'error': 'Downloaded file is not a valid video (ffprobe failed to read it).'}
         except Exception as e:
             self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
             return {'error': f'Shopee download failed: {str(e)}'}
@@ -564,8 +586,9 @@ class Api:
             response = opener.open(req, timeout=30)
             final_url = response.geturl()
             html_content = response.read().decode('utf-8', errors='ignore')
-        except Exception:
-            return None
+        except Exception as e:
+            self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+            return None, f'Failed to fetch Shopee share page: {e}'
 
         # If we landed on the desktop "universal-link" page, manually follow the
         # embedded ?redir= URL to reach sv.shopee.<region>/share-video/...
@@ -578,8 +601,16 @@ class Api:
                     response = opener.open(req, timeout=30)
                     final_url = response.geturl()
                     html_content = response.read().decode('utf-8', errors='ignore')
-                except Exception:
-                    return None
+                except Exception as e:
+                    self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+                    return None, f'Failed to follow Shopee universal-link redirect: {e}'
+
+        # Detect if the URL resolved to a non-video Shopee page
+        # (e.g. a product page like shopee.co.id/{shop}/{shopid}/{itemid}).
+        # The video share page lives under sv.shopee.<region>/share-video/...
+        if 'sv.shopee' not in final_url and '/share-video/' not in final_url:
+            self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+            return None, 'Shopee URL bukan halaman video (kemungkinan link produk/etalase, bukan Shopee Video).'
 
         # Extract __NEXT_DATA__ JSON injected by Shopee's Next.js page
         m = re.search(
@@ -587,12 +618,14 @@ class Api:
             html_content,
         )
         if not m:
-            return None
+            self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+            return None, 'Halaman Shopee tidak berisi data video (struktur halaman berubah atau video sudah tidak tersedia).'
 
         try:
             data = json.loads(m.group(1))
-        except Exception:
-            return None
+        except Exception as e:
+            self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+            return None, f'Gagal parse data video Shopee: {e}'
 
         media_video = (
             data.get('props', {})
@@ -600,19 +633,23 @@ class Api:
             .get('mediaInfo', {})
             .get('video', {})
         )
-        # Shopee's public share page only exposes the watermarked URL
+        # Shopee's public share page only exposes the watermarked URL.
+        # If neither field exists, the URL likely wasn't a video share page
+        # (e.g. it resolved to a product/shop page).
         video_url = media_video.get('watermarkVideoUrl') or media_video.get('videoUrl')
         if not video_url:
-            return None
+            self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+            return None, 'Halaman Shopee tidak punya URL video (mungkin video private atau sudah dihapus).'
 
-        # Build a filename from caption or postId
+        # Build a filename from caption or postId. Use _safe_filename so emojis
+        # and other non-ASCII chars don't break ffprobe.exe on Windows.
         post_id = (
             data.get('props', {}).get('pageProps', {}).get('query', {}).get('postId')
             or 'video'
         )
-        caption = (media_video.get('caption') or '')[:50].strip()
-        safe_caption = re.sub(r'[<>:"/\\|?*\n\r\t]', '', caption).strip()
-        base_name = safe_caption or re.sub(r'[<>:"/\\|?*=]', '_', str(post_id))
+        post_id_safe = _safe_filename(str(post_id), fallback='video', max_len=24)
+        caption = media_video.get('caption') or ''
+        base_name = _safe_filename(caption, fallback=post_id_safe, max_len=60)
         filename = f'shopee_{base_name}.mp4'
         filepath = os.path.join(download_dir, filename)
 
@@ -625,8 +662,9 @@ class Api:
                 'Referer': 'https://sv.shopee.co.id/',
             })
             vid_response = opener.open(vid_req, timeout=60)
-        except Exception:
-            return None
+        except Exception as e:
+            self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+            return None, f'Failed to download video file from CDN: {e}'
 
         total_size = vid_response.headers.get('Content-Length')
         total_size = int(total_size) if total_size else 0
@@ -663,9 +701,10 @@ class Api:
 
         if os.path.getsize(filepath) < 1024:
             os.remove(filepath)
-            return None
+            self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+            return None, 'Downloaded video file is too small (likely an error page from Shopee CDN).'
 
-        return filepath
+        return filepath, None
 
     # ---------- Facebook Reels Scraper ----------
     _FB_PROFILE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.fb_profile')
@@ -1131,6 +1170,7 @@ class Api:
             'progress_hooks': [progress_hook],
             'merge_output_format': 'mp4',
             'source_address': '0.0.0.0',
+            'restrictfilenames': True,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             },

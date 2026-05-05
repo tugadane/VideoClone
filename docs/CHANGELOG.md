@@ -6,6 +6,14 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.6.2] — 2026-05-05
+
+### Fixed
+- Batch download Shopee gagal dengan pesan "Downloaded file is not a valid video" pada video yang punya **emoji** di caption (mis. `😍`). Root cause: caption dipakai untuk nama file, dan ffprobe.exe tidak bisa membuka path dengan karakter di luar Windows system codepage. Fix: helper `_safe_filename()` baru yang strip non-ASCII; diterapkan ke Shopee, TikTok, plus opsi `restrictfilenames=True` untuk yt-dlp (Reels/YT Shorts/FB Reels).
+- Error message untuk URL Shopee non-video (mis. `s.shopee.co.id/...` yang resolve ke halaman produk) sekarang spesifik: "Shopee URL bukan halaman video..." daripada pesan generic.
+
+---
+
 ## [v0.6.1] — 2026-05-05
 
 ### Changed
