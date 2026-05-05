@@ -283,7 +283,7 @@ function clearBgmFile() {
 async function downloadBgmFromLink() {
     const url = document.getElementById('inputBgmLinkUrl').value.trim();
     const source = document.getElementById('selectBgmSource').value;
-    const labels = { tiktok: 'TikTok', reels: 'Instagram Reels', fbreels: 'Facebook Reels', ytshorts: 'YouTube Shorts' };
+    const labels = { tiktok: 'TikTok', reels: 'Instagram Reels', fbreels: 'Facebook Reels', ytshorts: 'YouTube Shorts', shopee: 'Shopee' };
 
     if (!url) {
         alert(`Please paste a ${labels[source]} link first.`);
@@ -540,6 +540,7 @@ function addVideoOverlay() {
                     <option value="reels">Instagram Reels</option>
                     <option value="fbreels">Facebook Reels</option>
                     <option value="ytshorts">YT Shorts</option>
+                    <option value="shopee">Shopee</option>
                 </select>
                 <input class="flex-1 bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-600 vid-overlay-link-url" type="text" placeholder="Paste video link here..."/>
                 <button class="px-3 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-primary/10 hover:border-primary/30 hover:text-primary transition-all text-sm font-bold flex items-center gap-1 shrink-0 btn-vid-link-download">
@@ -1085,6 +1086,7 @@ const SOURCE_CONFIG = {
     reels:    { label: 'Instagram Reels',  placeholder: 'Paste Instagram Reels link...',       api: 'download_from_reels',    progress: 'get_reels_download_progress' },
     fbreels:  { label: 'Facebook Reels',   placeholder: 'Paste Facebook Reels/video link...',  api: 'download_from_fbreels',  progress: 'get_fbreels_download_progress' },
     ytshorts: { label: 'YouTube Shorts',   placeholder: 'Paste YouTube Shorts link...',        api: 'download_from_ytshorts', progress: 'get_ytshorts_download_progress' },
+    shopee:   { label: 'Shopee',           placeholder: 'Paste Shopee video link (e.g. https://id.shp.ee/...)...',  api: 'download_from_shopee',   progress: 'get_shopee_download_progress' },
     gdrive:   { label: 'Google Drive',     placeholder: 'Paste Google Drive video link...',    api: 'download_from_gdrive',   progress: 'get_gdrive_download_progress' },
 };
 
@@ -1346,6 +1348,7 @@ function detectSourceFromUrl(url) {
     if (url.includes('instagram.com')) return 'reels';
     if (url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.com')) return 'fbreels';
     if (url.includes('youtube.com') || url.includes('youtu.be')) return 'ytshorts';
+    if (url.includes('shp.ee') || /(^|\.)shopee\.[a-z.]+/i.test(url)) return 'shopee';
     if (url.includes('drive.google.com')) return 'gdrive';
     return null;
 }

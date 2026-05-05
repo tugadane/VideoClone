@@ -508,6 +508,160 @@ class Api:
         self._ytshorts_progress = {'status': 'done', 'percent': 100, 'downloaded_mb': size_mb}
         return filepath
 
+    # ---------- Shopee Video ----------
+    def download_from_shopee(self, url):
+        """Download video from Shopee Video share link."""
+        try:
+            url = url.strip()
+            if not re.search(r'(shp\.ee/|shopee\.[a-z.]+/|sv\.shopee\.[a-z.]+/)', url, flags=re.IGNORECASE):
+                return {'error': 'Invalid Shopee URL'}
+
+            download_dir = os.path.join(tempfile.gettempdir(), 'clone_studio_shopee')
+            os.makedirs(download_dir, exist_ok=True)
+
+            self._shopee_progress = {'status': 'resolving', 'percent': 0, 'downloaded_mb': 0}
+
+            filepath = self._shopee_download(url, download_dir)
+            if not filepath:
+                return {'error': 'Failed to download Shopee video. Make sure the link is valid and the video is public.'}
+
+            info = self.get_video_info(filepath)
+            if info:
+                return info
+            return {'error': 'Downloaded file is not a valid video'}
+        except Exception as e:
+            self._shopee_progress = {'status': 'error', 'percent': 0, 'downloaded_mb': 0}
+            return {'error': f'Shopee download failed: {str(e)}'}
+
+    def get_shopee_download_progress(self):
+        return getattr(self, '_shopee_progress', {'status': 'idle', 'percent': 0, 'downloaded_mb': 0})
+
+    def _shopee_download(self, url, download_dir):
+        self._shopee_progress = {'status': 'resolving', 'percent': 0, 'downloaded_mb': 0}
+
+        cj = http.cookiejar.CookieJar()
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(cj),
+            urllib.request.HTTPRedirectHandler(),
+        )
+        ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        headers = {
+            'User-Agent': ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+
+        self._shopee_progress = {'status': 'fetching_info', 'percent': 10, 'downloaded_mb': 0}
+
+        # Resolve & fetch the share page (urllib auto-follows redirects)
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            response = opener.open(req, timeout=30)
+            final_url = response.geturl()
+            html_content = response.read().decode('utf-8', errors='ignore')
+        except Exception:
+            return None
+
+        # If we landed on the desktop "universal-link" page, manually follow the
+        # embedded ?redir= URL to reach sv.shopee.<region>/share-video/...
+        if 'universal-link' in final_url and 'sv.shopee' not in final_url:
+            redir_match = re.search(r'[?&]redir=([^&]+)', final_url)
+            if redir_match:
+                target = urllib.parse.unquote(redir_match.group(1))
+                try:
+                    req = urllib.request.Request(target, headers=headers)
+                    response = opener.open(req, timeout=30)
+                    final_url = response.geturl()
+                    html_content = response.read().decode('utf-8', errors='ignore')
+                except Exception:
+                    return None
+
+        # Extract __NEXT_DATA__ JSON injected by Shopee's Next.js page
+        m = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(\{.*?\})</script>',
+            html_content,
+        )
+        if not m:
+            return None
+
+        try:
+            data = json.loads(m.group(1))
+        except Exception:
+            return None
+
+        media_video = (
+            data.get('props', {})
+            .get('pageProps', {})
+            .get('mediaInfo', {})
+            .get('video', {})
+        )
+        # Shopee's public share page only exposes the watermarked URL
+        video_url = media_video.get('watermarkVideoUrl') or media_video.get('videoUrl')
+        if not video_url:
+            return None
+
+        # Build a filename from caption or postId
+        post_id = (
+            data.get('props', {}).get('pageProps', {}).get('query', {}).get('postId')
+            or 'video'
+        )
+        caption = (media_video.get('caption') or '')[:50].strip()
+        safe_caption = re.sub(r'[<>:"/\\|?*\n\r\t]', '', caption).strip()
+        base_name = safe_caption or re.sub(r'[<>:"/\\|?*=]', '_', str(post_id))
+        filename = f'shopee_{base_name}.mp4'
+        filepath = os.path.join(download_dir, filename)
+
+        self._shopee_progress = {'status': 'downloading', 'percent': 20, 'downloaded_mb': 0}
+
+        try:
+            vid_req = urllib.request.Request(video_url, headers={
+                'User-Agent': ua,
+                'Accept': '*/*',
+                'Referer': 'https://sv.shopee.co.id/',
+            })
+            vid_response = opener.open(vid_req, timeout=60)
+        except Exception:
+            return None
+
+        total_size = vid_response.headers.get('Content-Length')
+        total_size = int(total_size) if total_size else 0
+        downloaded = 0
+        block_size = 1024 * 256
+
+        with open(filepath, 'wb') as f:
+            while True:
+                chunk = vid_response.read(block_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total_size > 0:
+                    pct = 20 + int(downloaded / total_size * 80)
+                    self._shopee_progress = {
+                        'status': 'downloading',
+                        'percent': min(pct, 99),
+                        'downloaded_mb': round(downloaded / (1024 * 1024), 1),
+                        'total_mb': round(total_size / (1024 * 1024), 1),
+                    }
+                else:
+                    self._shopee_progress = {
+                        'status': 'downloading',
+                        'percent': 50,
+                        'downloaded_mb': round(downloaded / (1024 * 1024), 1),
+                    }
+
+        self._shopee_progress = {
+            'status': 'done',
+            'percent': 100,
+            'downloaded_mb': round(downloaded / (1024 * 1024), 1),
+        }
+
+        if os.path.getsize(filepath) < 1024:
+            os.remove(filepath)
+            return None
+
+        return filepath
+
     # ---------- Facebook Reels Scraper ----------
     _FB_PROFILE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.fb_profile')
 
@@ -1089,6 +1243,7 @@ class Api:
                 'reels': self.download_from_reels,
                 'fbreels': self.download_from_fbreels,
                 'ytshorts': self.download_from_ytshorts,
+                'shopee': self.download_from_shopee,
             }
 
             method = download_methods.get(source)

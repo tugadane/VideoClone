@@ -6,6 +6,22 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.5.0] — 2026-05-05
+
+### Added
+- **Dukungan download video Shopee** — opsi platform baru `Shopee` di Single Link, Batch Links (auto-detect), Background Music link, dan Video Overlay link.
+  - Mendukung short link `id.shp.ee/...` / `shp.ee/...` (dan regional lain) serta link share `sv.shopee.<region>/share-video/...`.
+  - Resolusi otomatis melalui rantai redirect Shopee (universal-link → share-video).
+  - Ekstraksi MP4 dari blok `__NEXT_DATA__` Next.js pada halaman share.
+  - Reuse oleh modul BGM extractor — Shopee bisa dijadikan sumber audio.
+
+### Changed
+- `src/api.py` — registrasi `'shopee'` di `download_methods` `extract_bgm_from_link`.
+- `src/web/index.html` — opsi `Shopee` di `#selectSource` dan `#selectBgmSource`.
+- `src/web/app.js` — `SOURCE_CONFIG.shopee`, label di BGM dialog, deteksi URL Shopee di `detectSourceFromUrl()`, dan opsi di template Video Overlay.
+
+---
+
 ## [v0.4.0] — 2026-04-08
 
 ### Added

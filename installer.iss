@@ -2,7 +2,7 @@
 ; Compile this with Inno Setup 6+ to create a Windows installer
 
 #define MyAppName "Clone Studio"
-#define MyAppVersion "0.4.0"
+#define MyAppVersion "0.5.0"
 #define MyAppPublisher "Clone Studio"
 #define MyAppExeName "CloneStudio.exe"
 
