@@ -101,6 +101,7 @@ class Api:
 
             info = self.get_video_info(filepath)
             if info:
+                info['source_platform'] = 'gdrive'
                 return info
             return {'error': 'Downloaded file is not a valid video'}
         except Exception as e:
@@ -213,6 +214,7 @@ class Api:
 
             info = self.get_video_info(filepath)
             if info:
+                info['source_platform'] = 'tiktok'
                 return info
             return {'error': 'Downloaded file is not a valid video'}
         except Exception as e:
@@ -333,6 +335,7 @@ class Api:
 
             info = self.get_video_info(filepath)
             if info:
+                info['source_platform'] = 'reels'
                 return info
             return {'error': 'Downloaded file is not a valid video'}
         except Exception as e:
@@ -428,6 +431,7 @@ class Api:
 
             info = self.get_video_info(filepath)
             if info:
+                info['source_platform'] = 'ytshorts'
                 return info
             return {'error': 'Downloaded file is not a valid video'}
         except Exception as e:
@@ -527,6 +531,7 @@ class Api:
 
             info = self.get_video_info(filepath)
             if info:
+                info['source_platform'] = 'shopee'
                 return info
             return {'error': 'Downloaded file is not a valid video'}
         except Exception as e:
@@ -991,6 +996,7 @@ class Api:
 
             info = self.get_video_info(filepath)
             if info:
+                info['source_platform'] = 'fbreels'
                 return info
             return {'error': 'Downloaded file is not a valid video'}
         except Exception as e:

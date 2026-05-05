@@ -26,8 +26,13 @@ class VideoCloner:
         sources = options.get('sources')
         if sources:
             self._sources = [(s['filepath'], s['count']) for s in sources]
+            self._source_platforms = {s['filepath']: s.get('source_platform') for s in sources}
         else:
             self._sources = [(source, options.get('count', 10))]
+            self._source_platforms = {source: options.get('source_platform')}
+        # Keep originals so we can revert / clean up after preprocessing
+        self._original_sources = list(self._sources)
+        self._preprocessed_files = []
 
         total_count = sum(c for _, c in self._sources)
 
@@ -67,6 +72,7 @@ class VideoCloner:
         global_index = 0
 
         try:
+            self._preprocess_watermark_all()
             for source_path, count in self._sources:
                 self.source = source_path
                 for j in range(count):
@@ -119,6 +125,179 @@ class VideoCloner:
             self.progress['error'] = str(e)
             if self.on_error:
                 self.on_error(str(e))
+        finally:
+            self._cleanup_preprocessed()
+
+    def _cleanup_preprocessed(self):
+        """Remove temp files created by watermark preprocessing."""
+        for path in self._preprocessed_files:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
+        self._preprocessed_files = []
+
+    def _preprocess_watermark_all(self):
+        """Apply watermark-hide regions to each source video.
+        Replaces self._sources entries with cleaned temp files when applicable."""
+        wm = self.options.get('watermark_hide') or {}
+        if not wm.get('enabled'):
+            return
+        new_sources = []
+        for src_path, count in self._sources:
+            if self.cancelled:
+                return
+            platform = self._source_platforms.get(src_path)
+            regions = self._resolve_watermark_regions(wm, platform)
+            if not regions:
+                new_sources.append((src_path, count))
+                continue
+            cleaned = self._apply_watermark_filters(src_path, regions)
+            if cleaned and cleaned != src_path:
+                self._preprocessed_files.append(cleaned)
+                new_sources.append((cleaned, count))
+                # Update platform map so subsequent steps still know origin
+                self._source_platforms[cleaned] = platform
+            else:
+                new_sources.append((src_path, count))
+        self._sources = new_sources
+
+    def _resolve_watermark_regions(self, wm, platform):
+        """Combine user-defined regions with auto-Shopee preset when applicable.
+        Returns a flat list of region dicts ready for filter generation."""
+        regions = list(wm.get('regions') or [])
+        auto_shopee = wm.get('auto_shopee', True)
+        if auto_shopee and platform == 'shopee':
+            already = any((r.get('preset') == 'shopee') for r in regions)
+            if not already:
+                regions.append({
+                    'x_pct': 0, 'y_pct': 46, 'w_pct': 36, 'h_pct': 10,
+                    'method': 'delogo_blur', 'strength': 8, 'preset': 'shopee',
+                })
+        # Filter to non-empty regions
+        valid = []
+        for r in regions:
+            try:
+                w = float(r.get('w_pct', 0))
+                h = float(r.get('h_pct', 0))
+                if w > 0 and h > 0:
+                    valid.append(r)
+            except (TypeError, ValueError):
+                continue
+        return valid
+
+    def _apply_watermark_filters(self, src_path, regions):
+        """Run a single ffmpeg pass that hides the listed regions.
+        Returns path to cleaned temp file, or src_path if no-op."""
+        info = get_video_info(self.ffmpeg_path, src_path)
+        if not info:
+            return src_path
+        src_w = int(info.get('width') or 0)
+        src_h = int(info.get('height') or 0)
+        if src_w <= 0 or src_h <= 0:
+            return src_path
+
+        def to_px(region):
+            x = max(0, int(src_w * float(region.get('x_pct', 0)) / 100.0))
+            y = max(0, int(src_h * float(region.get('y_pct', 0)) / 100.0))
+            w = max(1, int(src_w * float(region.get('w_pct', 0)) / 100.0))
+            h = max(1, int(src_h * float(region.get('h_pct', 0)) / 100.0))
+            if x + w > src_w:
+                w = src_w - x
+            if y + h > src_h:
+                h = src_h - y
+            return x, y, max(1, w), max(1, h)
+
+        simple_filters = []
+        fc_steps = []  # list of (kind, region) — kind is 'blur' (split+crop+overlay)
+
+        for r in regions:
+            method = r.get('method', 'delogo')
+            x, y, w, h = to_px(r)
+            if w < 2 or h < 2:
+                continue
+            if method == 'delogo':
+                # delogo wants interior pixels (>=1 from each edge)
+                dx = max(1, x)
+                dy = max(1, y)
+                dw = min(w, src_w - 1 - dx)
+                dh = min(h, src_h - 1 - dy)
+                if dw < 1 or dh < 1:
+                    continue
+                simple_filters.append(f"delogo=x={dx}:y={dy}:w={dw}:h={dh}:show=0")
+            elif method == 'cover':
+                color = (r.get('color') or '#000000').lstrip('#')
+                opacity = float(r.get('opacity', 0.7))
+                opacity = max(0.0, min(1.0, opacity))
+                simple_filters.append(
+                    f"drawbox=x={x}:y={y}:w={w}:h={h}:color=0x{color}@{opacity}:t=fill"
+                )
+            elif method == 'blur':
+                fc_steps.append(('blur', r, (x, y, w, h)))
+            elif method == 'delogo_blur':
+                # Apply delogo first (simple), then a soft blur on the same region
+                dx = max(1, x)
+                dy = max(1, y)
+                dw = min(w, src_w - 1 - dx)
+                dh = min(h, src_h - 1 - dy)
+                if dw >= 1 and dh >= 1:
+                    simple_filters.append(f"delogo=x={dx}:y={dy}:w={dw}:h={dh}:show=0")
+                fc_steps.append(('blur', r, (x, y, w, h)))
+
+        if not simple_filters and not fc_steps:
+            return src_path
+
+        out_path = os.path.join(
+            tempfile.gettempdir(), f'wmrem_{uuid.uuid4().hex[:8]}.mp4'
+        )
+
+        cmd = [self.ffmpeg_path, '-y', '-i', src_path]
+        if fc_steps:
+            # Build filter_complex: chain simple filters first, then split/crop/boxblur/overlay per fc step
+            fc_parts = []
+            cur = '0:v'
+            if simple_filters:
+                fc_parts.append(f"[{cur}]{','.join(simple_filters)}[v_pre]")
+                cur = 'v_pre'
+            for i, (_, region, (x, y, w, h)) in enumerate(fc_steps):
+                strength = max(1, int(region.get('strength', 8)))
+                base = f"v_base{i}"
+                blur = f"v_blur{i}"
+                cropped = f"v_crop{i}"
+                nxt = f"v_wm{i}"
+                fc_parts.append(f"[{cur}]split=2[{base}][{blur}]")
+                fc_parts.append(
+                    f"[{blur}]crop={w}:{h}:{x}:{y},boxblur={strength}:1[{cropped}]"
+                )
+                fc_parts.append(f"[{base}][{cropped}]overlay={x}:{y}[{nxt}]")
+                cur = nxt
+            cmd += [
+                '-filter_complex', ';'.join(fc_parts),
+                '-map', f'[{cur}]', '-map', '0:a?',
+            ]
+        else:
+            cmd += ['-vf', ','.join(simple_filters), '-map', '0:v', '-map', '0:a?']
+
+        cmd += [
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '20',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'copy',
+            out_path,
+        ]
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+        )
+        self._process = proc
+        _, stderr = proc.communicate()
+        if proc.returncode != 0:
+            err = stderr.decode('utf-8', errors='replace').strip()[-400:]
+            raise RuntimeError(f"Watermark hide preprocessing failed: {err}")
+        return out_path
 
     def _generate_clone(self, index, output_path):
         self._text_overlay_cwd = None

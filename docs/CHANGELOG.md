@@ -6,6 +6,23 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.6.0] — 2026-05-05
+
+### Added
+- **Hide Watermark Region** — panel baru untuk menutup/menghilangkan watermark statis pada video sumber sebelum cloning.
+  - 4 metode: `delogo`, `delogo_blur` (rekomendasi), `blur` (sensor), `cover` (drawbox solid).
+  - Region didefinisikan dalam persentase (X/Y/W/H) sehingga konsisten lintas resolusi.
+  - Tombol preset cepat: Shopee (kiri-tengah), TikTok atas, TikTok bawah, IG atas, YT Shorts bawah.
+  - Auto-hide Shopee saat source `source_platform == 'shopee'` (default ON).
+  - Pre-pass FFmpeg dijalankan satu kali per source (bukan per clone) → efisien.
+- Setiap method `download_from_*` di `src/api.py` mengembalikan `source_platform` sehingga frontend tahu platform asal file dan dapat menampilkan badge di source list.
+- Badge platform asal di kartu source list (Shopee / TikTok / IG Reels / FB Reels / YT Shorts / GDrive).
+
+### Changed
+- `src/cloner.py` — refactor minor: `_run()` kini melakukan `_preprocess_watermark_all()` sebelum loop clone. `__init__` menyimpan `_source_platforms` dan `_preprocessed_files` untuk pengelolaan temp file.
+
+---
+
 ## [v0.5.0] — 2026-05-05
 
 ### Added
