@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import subprocess
 import tempfile
 import urllib.request
 import urllib.parse
@@ -381,6 +382,7 @@ class Api:
             'no_warnings': True,
             'progress_hooks': [progress_hook],
             'merge_output_format': 'mp4',
+            'source_address': '0.0.0.0',
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             },
@@ -484,6 +486,7 @@ class Api:
             'no_warnings': True,
             'progress_hooks': [progress_hook],
             'merge_output_format': 'mp4',
+            'source_address': '0.0.0.0',
         }
 
         try:
@@ -504,6 +507,316 @@ class Api:
         size_mb = round(os.path.getsize(filepath) / (1024 * 1024), 1)
         self._ytshorts_progress = {'status': 'done', 'percent': 100, 'downloaded_mb': size_mb}
         return filepath
+
+    # ---------- Facebook Reels Scraper ----------
+    _FB_PROFILE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.fb_profile')
+
+    def fb_check_login(self):
+        """Check if Facebook login profile exists."""
+        marker = os.path.join(self._FB_PROFILE_DIR, '.logged_in')
+        return {'logged_in': os.path.exists(marker)}
+
+    def fb_logout(self):
+        """Clear saved Facebook session."""
+        import shutil
+        try:
+            if os.path.exists(self._FB_PROFILE_DIR):
+                shutil.rmtree(self._FB_PROFILE_DIR, ignore_errors=True)
+            return {'status': 'ok'}
+        except Exception as e:
+            return {'error': str(e)}
+
+    def fb_login(self):
+        """Open Chrome for user to login to Facebook. Profile is saved for future scraping."""
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+        except ImportError:
+            return {'error': 'Selenium not installed'}
+
+        import time as _time
+        import threading
+
+        marker = os.path.join(self._FB_PROFILE_DIR, '.logged_in')
+        if os.path.exists(marker):
+            os.remove(marker)
+
+        os.makedirs(self._FB_PROFILE_DIR, exist_ok=True)
+        opts = Options()
+        opts.add_argument(f'--user-data-dir={self._FB_PROFILE_DIR}')
+        opts.add_argument('--no-sandbox')
+        opts.add_argument('--disable-notifications')
+        opts.add_argument('--window-size=500,700')
+
+        def _run():
+            driver = None
+            try:
+                driver = webdriver.Chrome(options=opts)
+                driver.get('https://www.facebook.com/login')
+                for _ in range(300):
+                    try:
+                        current = driver.current_url
+                        if 'login' not in current and 'checkpoint' not in current:
+                            cookies = driver.get_cookies()
+                            if any(c['name'] == 'c_user' for c in cookies):
+                                with open(marker, 'w') as f:
+                                    f.write('1')
+                            _time.sleep(2)
+                            break
+                    except Exception:
+                        break
+                    _time.sleep(1)
+            except Exception:
+                pass
+            finally:
+                if driver:
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return {'status': 'ok'}
+
+    def _normalize_fb_reels_page_url(self, url):
+        """Normalize supported Facebook page/profile URLs to a reels endpoint."""
+        raw_url = (url or '').strip()
+        if not raw_url:
+            return None
+
+        if not re.search(r'facebook\.com/.+', raw_url):
+            return None
+
+        if not re.match(r'^https?://', raw_url, flags=re.IGNORECASE):
+            raw_url = f'https://{raw_url.lstrip('/')}'
+
+        parsed = urllib.parse.urlsplit(raw_url)
+        host = (parsed.hostname or '').lower()
+        if not (host == 'facebook.com' or host.endswith('.facebook.com') or host == 'fb.com' or host.endswith('.fb.com')):
+            return None
+
+        # Unwrap Facebook redirect links like l.facebook.com/l.php?u=<actual_url>
+        if host.startswith('l.facebook.com'):
+            target_url = (urllib.parse.parse_qs(parsed.query).get('u') or [''])[0].strip()
+            if target_url:
+                return self._normalize_fb_reels_page_url(target_url)
+            return None
+
+        path = (parsed.path or '').rstrip('/')
+        path_lower = path.lower()
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
+
+        # Support profile-style URL, e.g. /profile.php?id=...&sk=reels_tab
+        if path_lower == '/profile.php':
+            profile_id = (query.get('id') or [''])[0].strip()
+            if not profile_id:
+                return None
+            quoted_id = urllib.parse.quote(profile_id, safe='')
+            return f'https://www.facebook.com/profile.php?id={quoted_id}&sk=reels_tab'
+
+        if path_lower.endswith('/reels'):
+            return urllib.parse.urlunsplit(('https', 'www.facebook.com', path, '', ''))
+
+        segments = [seg for seg in path.split('/') if seg]
+        if segments:
+            return f'https://www.facebook.com/{segments[0]}/reels'
+
+        return None
+
+    def scrape_fb_reels(self, url, limit=0, scroll_count=3, order='desc'):
+        """Scrape reel video links from a Facebook page/profile reels URL."""
+        url = self._normalize_fb_reels_page_url(url)
+        if not url:
+            return {'error': 'Invalid Facebook page URL. Use /PageName/reels or /profile.php?id=...&sk=reels_tab'}
+
+        limit = int(limit) if limit else 0
+        scroll_count = int(scroll_count) if scroll_count else 3
+        order = str(order).lower() if order else 'desc'
+        if order not in ('asc', 'desc'):
+            order = 'desc'
+        is_logged_in = os.path.exists(os.path.join(self._FB_PROFILE_DIR, '.logged_in'))
+
+        # Use visible Chrome with profile (logged in) for full scraping
+        if is_logged_in and scroll_count > 0:
+            unique_ids = self._scrape_fb_reels_browser(url, scroll_count)
+        else:
+            unique_ids = []
+
+        # Fallback to requests (fast, ~10 reels, no login needed)
+        if not unique_ids:
+            unique_ids = self._scrape_fb_reels_requests(url)
+
+        if not unique_ids:
+            return {'error': 'No reels found. Make sure the page has public reels.'}
+
+        # Apply limit first, then optional reverse order.
+        # Example: total 15, limit 10, desc => use items 1..10 then return 10..1.
+        selected_ids = unique_ids[:limit] if limit > 0 else list(unique_ids)
+        if order == 'desc':
+            selected_ids = list(reversed(selected_ids))
+
+        links = [f'https://www.facebook.com/reel/{rid}' for rid in selected_ids]
+        return {'links': links, 'count': len(links)}
+
+    def _scrape_fb_reels_requests(self, url):
+        """Scrape via HTTP request (fast, ~10 reels max without login)."""
+        try:
+            import requests as req_lib
+        except ImportError:
+            return []
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate',
+        }
+        try:
+            r = req_lib.get(url, headers=headers, timeout=30, allow_redirects=True)
+            if r.status_code != 200:
+                return []
+        except Exception:
+            return []
+        seen = set()
+        unique = []
+        for vid in re.findall(r'"video_id":"(\d+)"', r.text):
+            if vid not in seen:
+                seen.add(vid)
+                unique.append(vid)
+        return unique
+
+    def _scrape_fb_reels_browser(self, url, scroll_count=3):
+        """Open Chrome, force-scroll reels feed, then scrape all reel IDs."""
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+        except ImportError:
+            return []
+
+        import time as _time
+
+        opts = Options()
+        opts.add_argument(f'--user-data-dir={self._FB_PROFILE_DIR}')
+        opts.add_argument('--no-sandbox')
+        opts.add_argument('--disable-notifications')
+        opts.add_argument('--disable-popup-blocking')
+        opts.add_argument('--window-size=1200,900')
+        opts.add_argument('--window-position=50,50')
+
+        try:
+            driver = webdriver.Chrome(options=opts)
+        except Exception:
+            return []
+
+        driver.set_page_load_timeout(30)
+        unique_ids = []
+
+        try:
+            # Step 1: Load the page
+            driver.get(url)
+            _time.sleep(5)
+
+            # Remove login popups/overlays
+            driver.execute_script("""
+                document.querySelectorAll('[role="dialog"]').forEach(e => e.remove());
+                document.body.style.overflow = 'auto';
+                document.documentElement.style.overflow = 'auto';
+            """)
+
+            # Step 2: Scroll N times first (let Facebook load more content)
+            rounds = max(1, int(scroll_count))
+            for _ in range(rounds):
+                before_h = driver.execute_script(
+                    "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
+                )
+
+                # Scroll window and all scrollable containers to force lazy loading.
+                driver.execute_script("""
+                    const rootH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+                    window.scrollTo(0, rootH);
+                    window.scrollBy(0, window.innerHeight * 0.9);
+
+                    const nodes = Array.from(document.querySelectorAll('*'));
+                    for (const el of nodes) {
+                        const s = window.getComputedStyle(el);
+                        const canY = /auto|scroll/.test(s.overflowY || '') && el.scrollHeight > el.clientHeight + 20;
+                        if (canY) {
+                            el.scrollTop = el.scrollHeight;
+                        }
+                    }
+                """)
+
+                # Remove popups that appear during scroll
+                driver.execute_script("""
+                    document.querySelectorAll('[role="dialog"]').forEach(e => e.remove());
+                    document.body.style.overflow = 'auto';
+                    document.documentElement.style.overflow = 'auto';
+                """)
+                _time.sleep(2.3)
+
+                after_h = driver.execute_script(
+                    "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
+                )
+                if after_h <= before_h:
+                    driver.execute_script('window.scrollBy(0, window.innerHeight * 1.2)')
+                    _time.sleep(1.2)
+
+            # Step 3: After scrolling, take links by visual position (top->bottom, left->right).
+            _time.sleep(1)
+            seen = set()
+
+            ordered_ids = driver.execute_script("""
+                const pickId = (href) => {
+                    if (!href) return null;
+                    const m = href.match(/\/reel\/(\d+)|[?&]v=(\d+)|\/videos\/(\d+)/);
+                    return m ? (m[1] || m[2] || m[3]) : null;
+                };
+
+                const nodes = Array.from(document.querySelectorAll('a[href*="/reel/"], a[href*="/watch/?v="], a[href*="/videos/"]'));
+                const items = [];
+
+                nodes.forEach((a, idx) => {
+                    const href = a.href || a.getAttribute('href') || '';
+                    const vid = pickId(href);
+                    if (!vid) return;
+                    const rect = a.getBoundingClientRect();
+                    items.push({
+                        vid,
+                        top: rect.top + window.scrollY,
+                        left: rect.left + window.scrollX,
+                        idx,
+                    });
+                });
+
+                items.sort((a, b) => {
+                    if (Math.abs(a.top - b.top) > 3) return a.top - b.top;
+                    if (Math.abs(a.left - b.left) > 3) return a.left - b.left;
+                    return a.idx - b.idx;
+                });
+
+                return items.map(x => x.vid);
+            """) or []
+
+            for vid in ordered_ids:
+                if vid not in seen:
+                    seen.add(vid)
+                    unique_ids.append(vid)
+
+            # Fallback: append extra IDs found in source that were not present in visual links.
+            src = driver.page_source
+            for vid in re.findall(r'"video_id":"(\d+)"', src):
+                if vid not in seen:
+                    seen.add(vid)
+                    unique_ids.append(vid)
+        except Exception:
+            pass
+        finally:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
+        return unique_ids
 
     # ---------- Facebook Reels ----------
     def download_from_fbreels(self, url):
@@ -536,6 +849,98 @@ class Api:
     def _fbreels_download(self, url, download_dir):
         self._fbreels_progress = {'status': 'resolving', 'percent': 0, 'downloaded_mb': 0}
 
+        # Extract video ID from URL
+        vid_match = re.search(r'(?:/reel/|/watch/?\?v=|/videos/|/video\.php\?v=)(\d+)', url)
+        video_id = vid_match.group(1) if vid_match else None
+
+        # Try direct scraping first (works on mobile ISPs where www.facebook.com is blocked)
+        if video_id:
+            filepath = self._fbreels_direct_download(video_id, download_dir)
+            if filepath:
+                return filepath
+
+        # Fallback to yt_dlp
+        return self._fbreels_ytdlp_download(url, download_dir)
+
+    def _fbreels_direct_download(self, video_id, download_dir):
+        """Download Facebook video by scraping m.facebook.com directly."""
+        import html as html_mod
+        try:
+            import requests as req_lib
+        except ImportError:
+            return None
+
+        self._fbreels_progress = {'status': 'fetching_info', 'percent': 10, 'downloaded_mb': 0}
+
+        session = req_lib.Session()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'none',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-user': '?1',
+            'upgrade-insecure-requests': '1',
+            'Cache-Control': 'max-age=0',
+        }
+
+        try:
+            r = session.get(f'https://m.facebook.com/reel/{video_id}', headers=headers, timeout=15)
+            if r.status_code != 200 or len(r.text) < 10000:
+                return None
+        except Exception:
+            return None
+
+        # Detect private/restricted reels: Facebook returns a small JS-only shell
+        # with generic "Facebook" title when the reel is not publicly accessible
+        page_title = re.findall(r'<title>([^<]+)</title>', r.text)
+        if page_title and page_title[0].strip() == 'Facebook' and len(r.text) < 60000:
+            raise Exception('Video ini tidak dapat diakses. Kemungkinan video bersifat privat atau hanya untuk teman (friends-only).')
+
+        # Find video CDN URL (mp4) in the HTML (try with html-unescaped text too)
+        decoded_text = html_mod.unescape(r.text)
+        video_urls = re.findall(
+            r'(https?://video[a-z0-9.-]*\.fbcdn\.net/[^\s"\'<>]+\.mp4[^\s"\'<>]*)',
+            decoded_text
+        )
+        if not video_urls:
+            return None
+
+        video_url = video_urls[0]
+
+        self._fbreels_progress = {'status': 'downloading', 'percent': 20, 'downloaded_mb': 0}
+
+        # Download the video file
+        try:
+            vid_r = session.get(video_url, headers={'User-Agent': headers['User-Agent']}, stream=True, timeout=30)
+            filepath = os.path.join(download_dir, f'fbreels_{video_id}.mp4')
+            total_bytes = int(vid_r.headers.get('content-length', 0))
+            downloaded = 0
+            with open(filepath, 'wb') as f:
+                for chunk in vid_r.iter_content(8192):
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total_bytes > 0:
+                        pct = 20 + int(downloaded / total_bytes * 75)
+                        self._fbreels_progress = {
+                            'status': 'downloading',
+                            'percent': min(pct, 95),
+                            'downloaded_mb': round(downloaded / (1024 * 1024), 1),
+                            'total_mb': round(total_bytes / (1024 * 1024), 1),
+                        }
+        except Exception:
+            return None
+
+        if not os.path.exists(filepath) or os.path.getsize(filepath) < 10000:
+            return None
+
+        size_mb = round(os.path.getsize(filepath) / (1024 * 1024), 1)
+        self._fbreels_progress = {'status': 'done', 'percent': 100, 'downloaded_mb': size_mb}
+        return filepath
+
+    def _fbreels_ytdlp_download(self, url, download_dir):
+        """Download Facebook video via yt_dlp (fallback)."""
         try:
             import yt_dlp
         except ImportError:
@@ -565,6 +970,7 @@ class Api:
             'no_warnings': True,
             'progress_hooks': [progress_hook],
             'merge_output_format': 'mp4',
+            'source_address': '0.0.0.0',
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             },
@@ -603,24 +1009,40 @@ class Api:
         if not check_ffmpeg(ffmpeg_path):
             return {'error': 'FFmpeg not found'}
 
-        source = options.get('source', '')
-        if not source or not os.path.exists(source):
-            return {'error': 'Source file not found'}
+        # Support multi-source
+        sources = options.get('sources', [])
+        if sources:
+            for src in sources:
+                fp = src.get('filepath', '')
+                if not fp or not os.path.exists(fp):
+                    return {'error': f'Source file not found: {os.path.basename(fp)}'}
+            first_source = sources[0]['filepath']
+            total_count = sum(s.get('count', 1) for s in sources)
+        else:
+            # Legacy single-source fallback
+            source = options.get('source', '')
+            if not source or not os.path.exists(source):
+                return {'error': 'Source file not found'}
+            first_source = source
+            sources = [{'filepath': source, 'count': options.get('count', 10)}]
+            options['sources'] = sources
+            total_count = options.get('count', 10)
 
         output_folder = options.get('output_folder', '')
         if not output_folder:
-            output_folder = os.path.dirname(source)
+            output_folder = os.path.dirname(first_source)
             options['output_folder'] = output_folder
 
         os.makedirs(output_folder, exist_ok=True)
 
         def on_complete(results, elapsed):
-            info = get_video_info(ffmpeg_path, source)
+            info = get_video_info(ffmpeg_path, first_source)
             duration = info['duration'] if info else '0:00'
+            source_names = ', '.join(os.path.basename(s['filepath']) for s in sources)
             self._history.add(
-                source_file=os.path.basename(source),
+                source_file=source_names,
                 duration=duration,
-                clone_count=options['count'],
+                clone_count=total_count,
                 method=options.get('method', 'fast'),
                 fmt=options.get('format', 'mp4'),
                 elapsed_total=elapsed,
@@ -636,7 +1058,7 @@ class Api:
 
         self._cloner = VideoCloner(
             ffmpeg_path=ffmpeg_path,
-            source=source,
+            source=first_source,
             options=options,
             on_complete=on_complete,
             on_error=on_error,
@@ -654,6 +1076,69 @@ class Api:
         if self._cloner:
             return dict(self._cloner.progress)
         return {'status': 'idle'}
+
+    # ---------- Extract BGM from Link ----------
+    def extract_bgm_from_link(self, source, url):
+        """Download video from link and extract audio as BGM."""
+        try:
+            self._bgm_extract_progress = {'percent': 0, 'label': 'Downloading video...'}
+
+            # Reuse existing download methods to get the video file
+            download_methods = {
+                'tiktok': self.download_from_tiktok,
+                'reels': self.download_from_reels,
+                'fbreels': self.download_from_fbreels,
+                'ytshorts': self.download_from_ytshorts,
+            }
+
+            method = download_methods.get(source)
+            if not method:
+                return {'error': f'Unsupported source: {source}'}
+
+            self._bgm_extract_progress = {'percent': 10, 'label': 'Downloading video...'}
+            result = method(url)
+
+            if not result or result.get('error'):
+                return {'error': result.get('error', 'Download failed')}
+
+            video_path = result.get('filepath')
+            if not video_path or not os.path.isfile(video_path):
+                return {'error': 'Downloaded video file not found'}
+
+            # Extract audio using FFmpeg
+            self._bgm_extract_progress = {'percent': 70, 'label': 'Extracting audio...'}
+
+            ffmpeg_path = self._config.get('ffmpeg_path') or 'ffmpeg'
+            audio_dir = os.path.join(tempfile.gettempdir(), 'clone_studio_bgm')
+            os.makedirs(audio_dir, exist_ok=True)
+
+            base_name = os.path.splitext(os.path.basename(video_path))[0]
+            audio_filename = f'{base_name}_audio.m4a'
+            audio_path = os.path.join(audio_dir, audio_filename)
+
+            cmd = [
+                ffmpeg_path, '-y', '-i', video_path,
+                '-vn', '-acodec', 'aac', '-b:a', '192k',
+                audio_path,
+            ]
+
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+
+            if proc.returncode != 0 or not os.path.isfile(audio_path):
+                return {'error': 'Failed to extract audio from video'}
+
+            self._bgm_extract_progress = {'percent': 100, 'label': 'Done!'}
+            return {'filepath': audio_path, 'filename': audio_filename}
+
+        except Exception as e:
+            self._bgm_extract_progress = {'percent': 0, 'label': 'Error'}
+            return {'error': f'BGM extraction failed: {str(e)}'}
+
+    def get_bgm_extract_progress(self):
+        return getattr(self, '_bgm_extract_progress', {'percent': 0, 'label': ''})
 
     # ---------- Config ----------
     def get_config(self):

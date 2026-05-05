@@ -5,11 +5,14 @@ import os
 class Config:
     DEFAULT = {
         'ffmpeg_path': 'ffmpeg.exe',
-        'default_clone_count': 10,
+        'default_clone_count': 1,
         'default_format': 'mp4',
-        'default_template': '{title}_clone{index}_{date}',
+        'default_template': '{index}',
         'default_output_folder': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hasil'),
-        'default_method': 'fast',
+        'default_method': 'standard',
+        'default_quality': '1080p',
+        'default_batch_auto_hide': True,
+        'source_list_collapsed': False,
         'notify_popup': True,
         'notify_sound': True,
     }
@@ -24,7 +27,7 @@ class Config:
 
     def load(self):
         if os.path.exists(self.path):
-            with open(self.path, 'r', encoding='utf-8') as f:
+            with open(self.path, 'r', encoding='utf-8-sig') as f:
                 saved = json.load(f)
             for key in self.DEFAULT:
                 if key in saved:

@@ -6,6 +6,25 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.4.0] — 2026-04-08
+
+### Added
+- **Green Screen (Chroma Key)** pada Video Overlay — checkbox, color picker, slider similarity & blend, preview ikon khusus.
+- Deteksi video Facebook privat/friends-only dengan pesan error deskriptif.
+
+### Changed
+- Pemisahan mode Single Source (File Info + slider "Clone Count") vs Multi Source (Source Videos list + slider "Default Clones per Source").
+- Overlay Size slider diperluas dari max 50% → max 100%.
+- Proporsi video overlay dihitung eksak via ffprobe (menjaga aspect ratio asli).
+- HTML unescape diterapkan pada seluruh teks sebelum regex pencarian URL Facebook.
+- Membersihkan elemen HTML duplikat di UI.
+
+### Fixed
+- Video overlay gepeng — dimensi sekarang dihitung di Python, bukan expression FFmpeg.
+- Green screen tidak transparan — `format=yuva420p` diterapkan sebelum `chromakey`.
+
+---
+
 ## [v0.3.1] — 2026-04-02
 
 ### Changed

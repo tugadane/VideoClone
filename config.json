@@ -1,10 +1,13 @@
 {
   "ffmpeg_path": "ffmpeg.exe",
-  "default_clone_count": 10,
+  "default_clone_count": 1,
   "default_format": "mp4",
-  "default_template": "{title}_clone{index}_{date}",
+  "default_template": "{index}",
   "default_output_folder": "hasil",
-  "default_method": "fast",
+  "default_method": "standard",
+  "default_quality": "1080p",
+  "default_batch_auto_hide": true,
+  "source_list_collapsed": false,
   "notify_popup": true,
   "notify_sound": true
 }

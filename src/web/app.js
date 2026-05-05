@@ -3,9 +3,13 @@
 // ========================================
 
 let currentFile = null;   // { filepath, filename, size_mb, duration, resolution, ... }
+let sourceFiles = [];     // Array of { filepath, filename, size_mb, duration, resolution, ..., cloneCount }
 let pollInterval = null;
 let isCloning = false;
 let outputFolder = '';
+let batchAutoHidePreference = true;
+let sourceListCollapsed = false;
+let sourceListManualOverride = false;
 
 // --- Wait for pywebview ---
 window.addEventListener('pywebviewready', () => {
@@ -44,14 +48,13 @@ function setupEventListeners() {
 
     // File selection
     document.getElementById('btnSelectFile').addEventListener('click', selectVideoFile);
-    document.getElementById('dropZoneInner').addEventListener('click', (e) => {
-        const isLinkArea = e.target.closest('#linkDownloadArea');
-        if (e.target.id !== 'btnSelectFile' && !e.target.closest('#btnSelectFile') && !isLinkArea
-            && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
-            selectVideoFile();
-        }
-    });
+    // Avoid accidental file-dialog popups from nested controls inside the drop zone.
+    // File picker is opened only by the explicit button or drag-drop.
     document.getElementById('btnClearFile').addEventListener('click', clearFile);
+
+    // Multi-source controls
+    document.getElementById('btnClearAllSources').addEventListener('click', clearAllSources);
+    document.getElementById('btnToggleSourceList').addEventListener('click', toggleSourceListCompact);
 
     // Unified link download
     document.getElementById('btnLinkDownload').addEventListener('click', downloadFromLink);
@@ -59,6 +62,24 @@ function setupEventListeners() {
         if (e.key === 'Enter') downloadFromLink();
     });
     document.getElementById('selectSource').addEventListener('change', updateLinkPlaceholder);
+
+    // Batch link download
+    document.getElementById('btnModeSingle').addEventListener('click', () => setLinkMode('single'));
+    document.getElementById('btnModeBatch').addEventListener('click', () => setLinkMode('batch'));
+    document.getElementById('inputBatchLinks').addEventListener('input', updateBatchLinkCount);
+    document.getElementById('btnBatchDownload').addEventListener('click', batchDownloadFromLinks);
+
+    // FB Reels scraper
+    document.getElementById('btnScrapeFbReels').addEventListener('click', scrapeFbReels);
+    document.getElementById('inputFbPageUrl').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') scrapeFbReels();
+    });
+    document.getElementById('btnFbSelectAll').addEventListener('click', () => fbScrapeSelectAll(true));
+    document.getElementById('btnFbDeselectAll').addEventListener('click', () => fbScrapeSelectAll(false));
+    document.getElementById('btnFbAddToBatch').addEventListener('click', fbAddSelectedToBatch);
+    document.getElementById('btnFbLogin').addEventListener('click', fbLogin);
+    document.getElementById('btnFbLogout').addEventListener('click', fbLogout);
+    checkFbLoginStatus();
 
     // Folder
     document.getElementById('btnBrowseFolder').addEventListener('click', selectOutputFolder);
@@ -72,6 +93,10 @@ function setupEventListeners() {
     const rangeEl = document.getElementById('rangeCloneCount');
     rangeEl.addEventListener('input', () => {
         document.getElementById('cloneCountLabel').textContent = rangeEl.value;
+        // In single-source mode, slider directly controls the clone count
+        if (sourceFiles.length === 1) {
+            sourceFiles[0].cloneCount = parseInt(rangeEl.value);
+        }
         updateEstimates();
         updateTemplatePreview();
     });
@@ -103,6 +128,13 @@ function setupEventListeners() {
         updateFxWarning();
     });
 
+    // Quality change
+    document.getElementById('selectQuality').addEventListener('change', () => {
+        updateEstimates();
+        const q = document.getElementById('selectQuality').value;
+        document.getElementById('qualityWarning').style.display = q !== 'auto' ? '' : 'none';
+    });
+
     // Video Effects panel
     document.getElementById('btnToggleEffects').addEventListener('click', toggleEffectsPanel);
     document.getElementById('btnSelectAllFx').addEventListener('click', () => setAllEffects(true));
@@ -118,33 +150,31 @@ function setupEventListeners() {
     document.getElementById('rangeBgmVolume').addEventListener('input', () => {
         document.getElementById('bgmVolumeLabel').textContent = document.getElementById('rangeBgmVolume').value + '%';
     });
+    document.getElementById('btnBgmLinkDownload').addEventListener('click', downloadBgmFromLink);
+    document.getElementById('inputBgmLinkUrl').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') downloadBgmFromLink();
+    });
+
+    // Source Audio
+    document.getElementById('btnToggleSourceAudio').addEventListener('click', toggleSourceAudioPanel);
+    document.getElementById('selectSourceAudio').addEventListener('change', () => {
+        const val = document.getElementById('selectSourceAudio').value;
+        document.getElementById('sourceAudioVolumeFields').style.display = val === 'custom' ? '' : 'none';
+    });
+    document.getElementById('rangeSourceAudioVolume').addEventListener('input', () => {
+        document.getElementById('sourceAudioVolumeLabel').textContent = document.getElementById('rangeSourceAudioVolume').value + '%';
+    });
 
     // Text Overlay
     document.getElementById('btnToggleTextOverlay').addEventListener('click', toggleTextOverlayPanel);
-    document.getElementById('chkTextOverlay').addEventListener('change', toggleTextOverlayFields);
-    document.getElementById('inputOverlayText').addEventListener('input', updateTextPreview);
-    document.getElementById('rangeTextSize').addEventListener('input', () => {
-        document.getElementById('textSizeLabel').textContent = document.getElementById('rangeTextSize').value + 'px';
-        updateTextPreview();
-    });
-    document.getElementById('selectTextPosition').addEventListener('change', updateTextPreview);
-    document.getElementById('selectTextFont').addEventListener('change', updateTextPreview);
-    document.getElementById('inputTextColor').addEventListener('input', () => {
-        document.getElementById('textColorHex').textContent = document.getElementById('inputTextColor').value;
-        updateTextPreview();
-    });
+    document.getElementById('btnAddTextOverlay').addEventListener('click', addTextOverlay);
 
     // Video Overlay
     document.getElementById('btnToggleVideoOverlay').addEventListener('click', toggleVideoOverlayPanel);
-    document.getElementById('chkVideoOverlay').addEventListener('change', toggleVideoOverlayFields);
-    document.getElementById('btnBrowseOverlayVideo').addEventListener('click', selectOverlayVideo);
-    document.getElementById('btnClearOverlayVideo').addEventListener('click', clearOverlayVideo);
-    document.getElementById('rangeOverlayVideoSize').addEventListener('input', () => {
-        document.getElementById('overlayVideoSizeLabel').textContent = document.getElementById('rangeOverlayVideoSize').value + '%';
-    });
-    document.getElementById('rangeOverlayVideoOpacity').addEventListener('input', () => {
-        document.getElementById('overlayVideoOpacityLabel').textContent = document.getElementById('rangeOverlayVideoOpacity').value + '%';
-    });
+    document.getElementById('btnAddVideoOverlay').addEventListener('click', addVideoOverlay);
+
+    // Overlay Preview
+    document.getElementById('btnTogglePreview').addEventListener('click', togglePreviewPanel);
 
     // History
     document.getElementById('btnClearHistory').addEventListener('click', clearHistory);
@@ -201,12 +231,26 @@ function setAllEffects(checked) {
 
 function updateFxWarning() {
     const hasEffects = FX_IDS.some(id => document.getElementById(id).checked);
-    const hasText = document.getElementById('chkTextOverlay').checked;
-    const hasVideoOverlay = document.getElementById('chkVideoOverlay').checked;
     const method = document.getElementById('selectMethod').value;
     document.getElementById('fxWarning').style.display = (hasEffects && method === 'fast') ? '' : 'none';
-    document.getElementById('textOverlayWarning').style.display = (hasText && method === 'fast') ? '' : 'none';
-    document.getElementById('videoOverlayWarning').style.display = (hasVideoOverlay && method === 'fast') ? '' : 'none';
+    updateOverlayWarnings();
+}
+
+// ========================================
+// SOURCE AUDIO
+// ========================================
+function toggleSourceAudioPanel() {
+    const panel = document.getElementById('sourceAudioPanel');
+    const chevron = document.getElementById('sourceAudioChevron');
+    panel.classList.toggle('collapsed');
+    chevron.classList.toggle('rotated');
+}
+
+function getSourceAudioOptions() {
+    const mode = document.getElementById('selectSourceAudio').value;
+    if (mode === 'keep') return { mode: 'keep', volume: 100 };
+    if (mode === 'mute') return { mode: 'mute', volume: 0 };
+    return { mode: 'custom', volume: parseInt(document.getElementById('rangeSourceAudioVolume').value) };
 }
 
 // ========================================
@@ -236,6 +280,52 @@ function clearBgmFile() {
     document.getElementById('btnClearBgm').classList.add('hidden');
 }
 
+async function downloadBgmFromLink() {
+    const url = document.getElementById('inputBgmLinkUrl').value.trim();
+    const source = document.getElementById('selectBgmSource').value;
+    const labels = { tiktok: 'TikTok', reels: 'Instagram Reels', fbreels: 'Facebook Reels', ytshorts: 'YouTube Shorts' };
+
+    if (!url) {
+        alert(`Please paste a ${labels[source]} link first.`);
+        return;
+    }
+
+    const btn = document.getElementById('btnBgmLinkDownload');
+    const progressEl = document.getElementById('bgmLinkProgress');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div> Extracting...';
+    progressEl.classList.remove('hidden');
+
+    const poll = setInterval(async () => {
+        const prog = await pywebview.api.get_bgm_extract_progress();
+        if (prog) {
+            document.getElementById('bgmLinkProgressBar').style.width = prog.percent + '%';
+            document.getElementById('bgmLinkProgressPercent').textContent = prog.percent + '%';
+            document.getElementById('bgmLinkProgressLabel').textContent = prog.label || 'Extracting audio...';
+        }
+    }, 500);
+
+    const result = await pywebview.api.extract_bgm_from_link(source, url);
+    clearInterval(poll);
+
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">music_note</span> Extract';
+    progressEl.classList.add('hidden');
+    document.getElementById('bgmLinkProgressBar').style.width = '0%';
+
+    if (result && result.error) {
+        alert('Error: ' + result.error);
+        return;
+    }
+
+    if (result && result.filepath) {
+        bgmFile = result;
+        document.getElementById('inputBgmFile').value = result.filename;
+        document.getElementById('btnClearBgm').classList.remove('hidden');
+        document.getElementById('inputBgmLinkUrl').value = '';
+    }
+}
+
 function getBgmOptions() {
     if (!bgmFile) return null;
     return {
@@ -246,8 +336,10 @@ function getBgmOptions() {
 }
 
 // ========================================
-// TEXT OVERLAY
+// TEXT OVERLAY (Multiple)
 // ========================================
+let textOverlayCounter = 0;
+
 function toggleTextOverlayPanel() {
     const panel = document.getElementById('textOverlayPanel');
     const chevron = document.getElementById('textOverlayChevron');
@@ -255,25 +347,125 @@ function toggleTextOverlayPanel() {
     chevron.classList.toggle('rotated');
 }
 
-function toggleTextOverlayFields() {
-    const checked = document.getElementById('chkTextOverlay').checked;
-    document.getElementById('textOverlayFields').style.display = checked ? '' : 'none';
-    const method = document.getElementById('selectMethod').value;
-    document.getElementById('textOverlayWarning').style.display = (checked && method === 'fast') ? '' : 'none';
-    updateFxWarning();
+const FONT_OPTIONS_HTML = `
+<option value="arial.ttf" style="font-family:Arial">Arial</option>
+<option value="arialbd.ttf" style="font-family:Arial">Arial Bold</option>
+<option value="impact.ttf" style="font-family:Impact">Impact</option>
+<option value="times.ttf" style="font-family:'Times New Roman'">Times New Roman</option>
+<option value="timesbd.ttf" style="font-family:'Times New Roman'">Times New Roman Bold</option>
+<option value="georgia.ttf" style="font-family:Georgia">Georgia</option>
+<option value="verdana.ttf" style="font-family:Verdana">Verdana</option>
+<option value="verdanab.ttf" style="font-family:Verdana">Verdana Bold</option>
+<option value="tahoma.ttf" style="font-family:Tahoma">Tahoma</option>
+<option value="calibri.ttf" style="font-family:Calibri">Calibri</option>
+<option value="calibrib.ttf" style="font-family:Calibri">Calibri Bold</option>
+<option value="comic.ttf" style="font-family:'Comic Sans MS'">Comic Sans</option>
+<option value="consola.ttf" style="font-family:Consolas">Consolas</option>
+<option value="trebuc.ttf" style="font-family:'Trebuchet MS'">Trebuchet MS</option>
+<option value="cour.ttf" style="font-family:'Courier New'">Courier New</option>
+<option value="segoeui.ttf" style="font-family:'Segoe UI'">Segoe UI</option>
+<option value="segoeuib.ttf" style="font-family:'Segoe UI'">Segoe UI Bold</option>
+<option value="bahnschrift.ttf" style="font-family:Bahnschrift">Bahnschrift</option>`;
+
+function addTextOverlay() {
+    const idx = textOverlayCounter++;
+    const num = document.getElementById('textOverlayItems').children.length + 1;
+    const card = document.createElement('div');
+    card.className = 'bg-card rounded-lg border border-white/10 p-3 space-y-3';
+    card.dataset.textIdx = idx;
+    card.innerHTML = `
+        <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-primary">Text #${num}</span>
+            <button class="text-slate-500 hover:text-red-500 transition-colors btn-remove-text" data-idx="${idx}">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+        <div class="space-y-1">
+            <label class="text-xs font-semibold text-slate-400">Text <span class="text-slate-600">(supports multiple lines)</span></label>
+            <textarea class="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary resize-none custom-scrollbar txt-overlay-text" placeholder="Enter text to overlay...&#10;Line 2...&#10;Line 3..." rows="3" maxlength="300"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1">
+                <label class="text-xs font-semibold text-slate-400">Font</label>
+                <select class="w-full bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none txt-overlay-font">${FONT_OPTIONS_HTML}</select>
+            </div>
+            <div class="space-y-2">
+                <div class="flex justify-between items-center">
+                    <label class="text-xs font-semibold text-slate-400">Font Size</label>
+                    <span class="text-primary font-bold text-sm txt-overlay-size-label">24px</span>
+                </div>
+                <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary txt-overlay-size" min="10" max="80" type="range" value="24"/>
+                <div class="flex justify-between text-[10px] text-slate-500 font-bold"><span>10px</span><span>80px</span></div>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1">
+                <label class="text-xs font-semibold text-slate-400">Position</label>
+                <select class="w-full bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none txt-overlay-position">
+                    <option value="top-left">Top Left</option>
+                    <option value="top-center">Top Center</option>
+                    <option value="top-right">Top Right</option>
+                    <option value="center">Center</option>
+                    <option value="bottom-left" selected>Bottom Left</option>
+                    <option value="bottom-center">Bottom Center</option>
+                    <option value="bottom-right">Bottom Right</option>
+                </select>
+            </div>
+            <div class="space-y-1">
+                <label class="text-xs font-semibold text-slate-400">Font Color</label>
+                <div class="flex gap-2 items-center">
+                    <input type="color" value="#ffffff" class="w-10 h-10 rounded-lg border border-white/10 bg-black cursor-pointer txt-overlay-color"/>
+                    <span class="text-xs text-slate-400 txt-overlay-color-hex">#ffffff</span>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('textOverlayItems').appendChild(card);
+
+    // Wire up events within this card
+    card.querySelector('.btn-remove-text').addEventListener('click', () => removeTextOverlay(card));
+    card.querySelector('.txt-overlay-size').addEventListener('input', (e) => {
+        card.querySelector('.txt-overlay-size-label').textContent = e.target.value + 'px';
+        updatePhonePreview();
+    });
+    card.querySelector('.txt-overlay-color').addEventListener('input', (e) => {
+        card.querySelector('.txt-overlay-color-hex').textContent = e.target.value;
+        updatePhonePreview();
+    });
+    card.querySelector('.txt-overlay-text').addEventListener('input', () => updatePhonePreview());
+    card.querySelector('.txt-overlay-position').addEventListener('change', () => updatePhonePreview());
+    card.querySelector('.txt-overlay-font').addEventListener('change', () => updatePhonePreview());
+
+    updateOverlayWarnings();
+    updatePhonePreview();
+}
+
+function removeTextOverlay(card) {
+    card.remove();
+    // Renumber remaining cards
+    document.querySelectorAll('#textOverlayItems > div').forEach((c, i) => {
+        c.querySelector('.text-primary').textContent = `Text #${i + 1}`;
+    });
+    updateOverlayWarnings();
+    updatePhonePreview();
 }
 
 function getTextOverlayOptions() {
-    if (!document.getElementById('chkTextOverlay').checked) return null;
-    const text = document.getElementById('inputOverlayText').value.trim();
-    if (!text) return null;
-    return {
-        text: text,
-        font_size: parseInt(document.getElementById('rangeTextSize').value),
-        position: document.getElementById('selectTextPosition').value,
-        color: document.getElementById('inputTextColor').value,
-        font: document.getElementById('selectTextFont').value,
-    };
+    const items = document.querySelectorAll('#textOverlayItems > div');
+    if (items.length === 0) return null;
+    const overlays = [];
+    items.forEach(card => {
+        const text = card.querySelector('.txt-overlay-text').value.trim();
+        if (!text) return;
+        overlays.push({
+            text: text,
+            font_size: parseInt(card.querySelector('.txt-overlay-size').value),
+            position: card.querySelector('.txt-overlay-position').value,
+            color: card.querySelector('.txt-overlay-color').value,
+            font: card.querySelector('.txt-overlay-font').value,
+        });
+    });
+    return overlays.length > 0 ? overlays : null;
 }
 
 const FONT_FAMILY_MAP = {
@@ -292,38 +484,19 @@ const FONT_FAMILY_MAP = {
     'bahnschrift.ttf': 'Bahnschrift',
 };
 
-function updateTextPreview() {
-    const label = document.getElementById('textPreviewLabel');
-    const text = document.getElementById('inputOverlayText').value || 'Your text here';
-    const size = parseInt(document.getElementById('rangeTextSize').value);
-    const color = document.getElementById('inputTextColor').value;
-    const pos = document.getElementById('selectTextPosition').value;
-    const fontFile = document.getElementById('selectTextFont').value;
-    const fontFamily = FONT_FAMILY_MAP[fontFile] || 'Arial';
-
-    label.textContent = text;
-    label.style.fontSize = Math.max(size * 0.5, 10) + 'px';
-    label.style.color = color;
-    label.style.fontFamily = fontFamily + ', sans-serif';
-
-    // Position mapping
-    const posMap = {
-        'top-left':      { top: '8px', left: '12px', right: 'auto', bottom: 'auto', transform: 'none', textAlign: 'left' },
-        'top-center':    { top: '8px', left: '50%', right: 'auto', bottom: 'auto', transform: 'translateX(-50%)', textAlign: 'center' },
-        'top-right':     { top: '8px', left: 'auto', right: '12px', bottom: 'auto', transform: 'none', textAlign: 'right' },
-        'center':        { top: '50%', left: '50%', right: 'auto', bottom: 'auto', transform: 'translate(-50%,-50%)', textAlign: 'center' },
-        'bottom-left':   { top: 'auto', left: '12px', right: 'auto', bottom: '8px', transform: 'none', textAlign: 'left' },
-        'bottom-center': { top: 'auto', left: '50%', right: 'auto', bottom: '8px', transform: 'translateX(-50%)', textAlign: 'center' },
-        'bottom-right':  { top: 'auto', left: 'auto', right: '12px', bottom: '8px', transform: 'none', textAlign: 'right' },
-    };
-    const s = posMap[pos] || posMap['bottom-left'];
-    Object.assign(label.style, s);
+function updateOverlayWarnings() {
+    const hasText = document.querySelectorAll('#textOverlayItems > div').length > 0;
+    const hasVideo = document.querySelectorAll('#videoOverlayItems > div').length > 0;
+    const method = document.getElementById('selectMethod').value;
+    document.getElementById('textOverlayWarning').classList.toggle('hidden', !(hasText && method === 'fast'));
+    document.getElementById('videoOverlayWarning').classList.toggle('hidden', !(hasVideo && method === 'fast'));
 }
 
 // ========================================
-// VIDEO OVERLAY
+// VIDEO OVERLAY (Multiple)
 // ========================================
-let overlayVideoFile = null; // { filepath, filename }
+let videoOverlayCounter = 0;
+const videoOverlayFiles = {}; // { idx: { filepath, filename } }
 
 function toggleVideoOverlayPanel() {
     const panel = document.getElementById('videoOverlayPanel');
@@ -332,39 +505,260 @@ function toggleVideoOverlayPanel() {
     chevron.classList.toggle('rotated');
 }
 
-function toggleVideoOverlayFields() {
-    const checked = document.getElementById('chkVideoOverlay').checked;
-    document.getElementById('videoOverlayFields').style.display = checked ? '' : 'none';
-    const method = document.getElementById('selectMethod').value;
-    document.getElementById('videoOverlayWarning').style.display = (checked && method === 'fast') ? '' : 'none';
-    updateFxWarning();
+function togglePreviewPanel() {
+    const panel = document.getElementById('previewPanel');
+    const chevron = document.getElementById('previewChevron');
+    panel.classList.toggle('collapsed');
+    chevron.classList.toggle('rotated');
 }
 
-async function selectOverlayVideo() {
-    const result = await pywebview.api.select_overlay_video();
-    if (result) {
-        overlayVideoFile = result;
-        document.getElementById('inputOverlayVideo').value = result.filename;
-        document.getElementById('btnClearOverlayVideo').classList.remove('hidden');
+function addVideoOverlay() {
+    const idx = videoOverlayCounter++;
+    const num = document.getElementById('videoOverlayItems').children.length + 1;
+    const card = document.createElement('div');
+    card.className = 'bg-card rounded-lg border border-white/10 p-3 space-y-3';
+    card.dataset.videoIdx = idx;
+    card.innerHTML = `
+        <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-primary">Video #${num}</span>
+            <button class="text-slate-500 hover:text-red-500 transition-colors btn-remove-video" data-idx="${idx}">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+        <div class="flex gap-2">
+            <input class="flex-1 bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary vid-overlay-file" placeholder="No overlay video selected" type="text" readonly/>
+            <button class="px-4 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-white/5 hover:border-primary/30 transition-colors text-sm font-medium btn-browse-vid">Browse</button>
+            <button class="px-3 py-2.5 text-slate-500 hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-colors hidden btn-clear-vid">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+        <div class="border-t border-white/5 pt-3">
+            <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2 text-center">or download from link</p>
+            <div class="flex gap-2">
+                <select class="bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none shrink-0 w-[140px] vid-overlay-source">
+                    <option value="tiktok">TikTok</option>
+                    <option value="reels">Instagram Reels</option>
+                    <option value="fbreels">Facebook Reels</option>
+                    <option value="ytshorts">YT Shorts</option>
+                </select>
+                <input class="flex-1 bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-600 vid-overlay-link-url" type="text" placeholder="Paste video link here..."/>
+                <button class="px-3 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-primary/10 hover:border-primary/30 hover:text-primary transition-all text-sm font-bold flex items-center gap-1 shrink-0 btn-vid-link-download">
+                    <span class="material-symbols-outlined text-base">cloud_download</span> Download
+                </button>
+            </div>
+            <div class="hidden mt-2 vid-overlay-link-progress">
+                <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                    <span class="vid-overlay-link-progress-label">Downloading...</span>
+                    <span class="text-primary font-bold vid-overlay-link-progress-percent">0%</span>
+                </div>
+                <div class="w-full h-1.5 bg-black rounded-full overflow-hidden">
+                    <div class="bg-gradient-to-r from-orange-600 to-primary h-full rounded-full transition-all duration-300 vid-overlay-link-progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-2">
+                <div class="flex justify-between items-center">
+                    <label class="text-xs font-semibold text-slate-400">Overlay Size</label>
+                    <span class="text-primary font-bold text-sm vid-overlay-size-label">25%</span>
+                </div>
+                <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary vid-overlay-size" min="10" max="100" type="range" value="25"/>
+                <div class="flex justify-between text-[10px] text-slate-500 font-bold"><span>10%</span><span>100%</span></div>
+            </div>
+            <div class="space-y-1">
+                <label class="text-xs font-semibold text-slate-400">Position</label>
+                <select class="w-full bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none vid-overlay-position">
+                    <option value="top-left">Top Left</option>
+                    <option value="top-right">Top Right</option>
+                    <option value="bottom-left" selected>Bottom Left</option>
+                    <option value="bottom-right">Bottom Right</option>
+                    <option value="center">Center</option>
+                </select>
+            </div>
+        </div>
+        <div class="space-y-2">
+            <div class="flex justify-between items-center">
+                <label class="text-xs font-semibold text-slate-400">Opacity</label>
+                <span class="text-primary font-bold text-sm vid-overlay-opacity-label">100%</span>
+            </div>
+            <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary vid-overlay-opacity" min="10" max="100" type="range" value="100"/>
+            <div class="flex justify-between text-[10px] text-slate-500 font-bold"><span>10%</span><span>100%</span></div>
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" class="accent-primary vid-overlay-loop" checked/>
+            <span class="text-xs text-slate-300">Loop overlay video if shorter than main video</span>
+        </label>
+        <div class="border-t border-white/5 pt-3 space-y-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" class="accent-primary vid-overlay-chromakey"/>
+                <span class="text-xs text-slate-300 font-semibold">Green Screen (Chroma Key)</span>
+            </label>
+            <div class="vid-overlay-chromakey-options hidden space-y-3">
+                <div class="flex items-center gap-3">
+                    <label class="text-xs font-semibold text-slate-400 shrink-0">Key Color</label>
+                    <input type="color" class="w-8 h-8 rounded cursor-pointer border border-white/10 vid-overlay-chromakey-color" value="#00ff00"/>
+                    <span class="text-xs text-slate-500 vid-overlay-chromakey-color-label">#00ff00</span>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-semibold text-slate-400">Similarity</label>
+                        <span class="text-primary font-bold text-sm vid-overlay-chromakey-similarity-label">0.3</span>
+                    </div>
+                    <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary vid-overlay-chromakey-similarity" min="1" max="10" type="range" value="3"/>
+                    <div class="flex justify-between text-[10px] text-slate-500 font-bold"><span>Low</span><span>High</span></div>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-semibold text-slate-400">Blend</label>
+                        <span class="text-primary font-bold text-sm vid-overlay-chromakey-blend-label">0.1</span>
+                    </div>
+                    <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary vid-overlay-chromakey-blend" min="0" max="10" type="range" value="1"/>
+                    <div class="flex justify-between text-[10px] text-slate-500 font-bold"><span>Hard</span><span>Soft</span></div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('videoOverlayItems').appendChild(card);
+
+    // Wire up events
+    card.querySelector('.btn-remove-video').addEventListener('click', () => removeVideoOverlay(card, idx));
+    card.querySelector('.btn-browse-vid').addEventListener('click', async () => {
+        const result = await pywebview.api.select_overlay_video();
+        if (result) {
+            videoOverlayFiles[idx] = result;
+            card.querySelector('.vid-overlay-file').value = result.filename;
+            card.querySelector('.btn-clear-vid').classList.remove('hidden');
+        }
+    });
+    card.querySelector('.btn-clear-vid').addEventListener('click', () => {
+        delete videoOverlayFiles[idx];
+        card.querySelector('.vid-overlay-file').value = '';
+        card.querySelector('.btn-clear-vid').classList.add('hidden');
+    });
+    card.querySelector('.vid-overlay-size').addEventListener('input', (e) => {
+        card.querySelector('.vid-overlay-size-label').textContent = e.target.value + '%';
+        updatePhonePreview();
+    });
+    card.querySelector('.vid-overlay-opacity').addEventListener('input', (e) => {
+        card.querySelector('.vid-overlay-opacity-label').textContent = e.target.value + '%';
+        updatePhonePreview();
+    });
+    card.querySelector('.vid-overlay-position').addEventListener('change', () => updatePhonePreview());
+
+    // Chroma key toggle
+    card.querySelector('.vid-overlay-chromakey').addEventListener('change', (e) => {
+        card.querySelector('.vid-overlay-chromakey-options').classList.toggle('hidden', !e.target.checked);
+        updatePhonePreview();
+    });
+    card.querySelector('.vid-overlay-chromakey-color').addEventListener('input', (e) => {
+        card.querySelector('.vid-overlay-chromakey-color-label').textContent = e.target.value;
+    });
+    card.querySelector('.vid-overlay-chromakey-similarity').addEventListener('input', (e) => {
+        card.querySelector('.vid-overlay-chromakey-similarity-label').textContent = (e.target.value / 10).toFixed(1);
+    });
+    card.querySelector('.vid-overlay-chromakey-blend').addEventListener('input', (e) => {
+        card.querySelector('.vid-overlay-chromakey-blend-label').textContent = (e.target.value / 10).toFixed(1);
+    });
+
+    // Link download
+    card.querySelector('.btn-vid-link-download').addEventListener('click', () => downloadVideoOverlayFromLink(card, idx));
+    card.querySelector('.vid-overlay-link-url').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') downloadVideoOverlayFromLink(card, idx);
+    });
+
+    updateOverlayWarnings();
+    updatePhonePreview();
+}
+
+async function downloadVideoOverlayFromLink(card, idx) {
+    const url = card.querySelector('.vid-overlay-link-url').value.trim();
+    const source = card.querySelector('.vid-overlay-source').value;
+    const config = SOURCE_CONFIG[source];
+    if (!config) return;
+
+    if (!url) {
+        alert(`Please paste a ${config.label} link first.`);
+        return;
+    }
+
+    const btn = card.querySelector('.btn-vid-link-download');
+    const progressEl = card.querySelector('.vid-overlay-link-progress');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div> Downloading...';
+    progressEl.classList.remove('hidden');
+
+    const poll = setInterval(async () => {
+        const prog = await pywebview.api[config.progress]();
+        if (prog) {
+            card.querySelector('.vid-overlay-link-progress-bar').style.width = prog.percent + '%';
+            card.querySelector('.vid-overlay-link-progress-percent').textContent = prog.percent + '%';
+            const mb = prog.downloaded_mb || 0;
+            const total = prog.total_mb ? ` / ${prog.total_mb} MB` : '';
+            const statusLabel = prog.status === 'resolving' ? `Resolving ${config.label} link...`
+                : prog.status === 'fetching_info' ? 'Fetching video info...'
+                : `Downloading... ${mb} MB${total}`;
+            card.querySelector('.vid-overlay-link-progress-label').textContent = statusLabel;
+        }
+    }, 500);
+
+    const info = await pywebview.api[config.api](url);
+    clearInterval(poll);
+
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">cloud_download</span> Download';
+    progressEl.classList.add('hidden');
+    card.querySelector('.vid-overlay-link-progress-bar').style.width = '0%';
+
+    if (info && info.error) {
+        alert(`${config.label} Error: ` + info.error);
+        return;
+    }
+
+    if (info && info.filepath) {
+        videoOverlayFiles[idx] = { filepath: info.filepath, filename: info.filename };
+        card.querySelector('.vid-overlay-file').value = info.filename;
+        card.querySelector('.btn-clear-vid').classList.remove('hidden');
+        card.querySelector('.vid-overlay-link-url').value = '';
     }
 }
 
-function clearOverlayVideo() {
-    overlayVideoFile = null;
-    document.getElementById('inputOverlayVideo').value = '';
-    document.getElementById('btnClearOverlayVideo').classList.add('hidden');
+function removeVideoOverlay(card, idx) {
+    delete videoOverlayFiles[idx];
+    card.remove();
+    // Renumber remaining cards
+    document.querySelectorAll('#videoOverlayItems > div').forEach((c, i) => {
+        c.querySelector('.text-primary').textContent = `Video #${i + 1}`;
+    });
+    updateOverlayWarnings();
+    updatePhonePreview();
 }
 
 function getVideoOverlayOptions() {
-    if (!document.getElementById('chkVideoOverlay').checked) return null;
-    if (!overlayVideoFile) return null;
-    return {
-        filepath: overlayVideoFile.filepath,
-        size_pct: parseInt(document.getElementById('rangeOverlayVideoSize').value),
-        position: document.getElementById('selectOverlayVideoPosition').value,
-        opacity: parseInt(document.getElementById('rangeOverlayVideoOpacity').value),
-        loop: document.getElementById('chkOverlayVideoLoop').checked,
-    };
+    const items = document.querySelectorAll('#videoOverlayItems > div');
+    if (items.length === 0) return null;
+    const overlays = [];
+    items.forEach(card => {
+        const idx = parseInt(card.dataset.videoIdx);
+        const file = videoOverlayFiles[idx];
+        if (!file) return;
+        const chromakeyEnabled = card.querySelector('.vid-overlay-chromakey').checked;
+        const overlay = {
+            filepath: file.filepath,
+            size_pct: parseInt(card.querySelector('.vid-overlay-size').value),
+            position: card.querySelector('.vid-overlay-position').value,
+            opacity: parseInt(card.querySelector('.vid-overlay-opacity').value),
+            loop: card.querySelector('.vid-overlay-loop').checked,
+        };
+        if (chromakeyEnabled) {
+            overlay.chromakey = {
+                color: card.querySelector('.vid-overlay-chromakey-color').value,
+                similarity: parseInt(card.querySelector('.vid-overlay-chromakey-similarity').value) / 10,
+                blend: parseInt(card.querySelector('.vid-overlay-chromakey-blend').value) / 10,
+            };
+        }
+        overlays.push(overlay);
+    });
+    return overlays.length > 0 ? overlays : null;
 }
 
 // ========================================
@@ -402,14 +796,12 @@ async function selectVideoFile() {
 function onFileSelected(info) {
     currentFile = info;
 
-    // Show file info
-    document.getElementById('fileInfo').classList.remove('hidden');
-    document.getElementById('infoFilename').textContent = info.filename || '-';
-    document.getElementById('infoFilesize').textContent = info.size_mb ? `${info.size_mb} MB` : '-';
-    document.getElementById('infoDuration').textContent = info.duration || '-';
-    document.getElementById('infoResolution').textContent = info.resolution || '-';
-    document.getElementById('infoCodec').textContent = info.video_codec || '-';
-    document.getElementById('infoBitrate').textContent = info.bitrate_kbps ? `${info.bitrate_kbps} Kbps` : '-';
+    // Add to multi-source list
+    const defaultCount = parseInt(document.getElementById('rangeCloneCount').value) || 10;
+    sourceFiles.push({ ...info, cloneCount: defaultCount });
+
+    // Update mode (single vs multi)
+    updateSourceMode();
 
     // Enable start button
     document.getElementById('btnStartClone').disabled = false;
@@ -419,12 +811,163 @@ function onFileSelected(info) {
     updateTemplatePreview();
 }
 
+function updateSourceMode() {
+    const fileInfoEl = document.getElementById('fileInfo');
+    const sourceListEl = document.getElementById('sourceListSection');
+    const sliderLabel = document.getElementById('cloneCountSliderLabel');
+    const sliderHint = document.getElementById('cloneCountSliderHint');
+
+    if (sourceFiles.length === 0) {
+        fileInfoEl.classList.add('hidden');
+        sourceListEl.classList.add('hidden');
+        sliderLabel.textContent = 'Clone Count';
+        sliderHint.classList.add('hidden');
+    } else if (sourceFiles.length === 1) {
+        // Single source mode: show file info, hide source list, slider = direct count
+        const info = sourceFiles[0];
+        fileInfoEl.classList.remove('hidden');
+        document.getElementById('infoFilename').textContent = info.filename || '-';
+        document.getElementById('infoFilesize').textContent = info.size_mb ? `${info.size_mb} MB` : '-';
+        document.getElementById('infoDuration').textContent = info.duration || '-';
+        document.getElementById('infoResolution').textContent = info.resolution || '-';
+        document.getElementById('infoCodec').textContent = info.video_codec || '-';
+        document.getElementById('infoBitrate').textContent = info.bitrate_kbps ? `${info.bitrate_kbps} Kbps` : '-';
+
+        sourceListEl.classList.add('hidden');
+        sliderLabel.textContent = 'Clone Count';
+        sliderHint.classList.add('hidden');
+
+        // Sync slider with the single source's count
+        document.getElementById('rangeCloneCount').value = info.cloneCount;
+        document.getElementById('cloneCountLabel').textContent = info.cloneCount;
+    } else {
+        // Multi source mode: hide file info, show source list with per-source counts
+        fileInfoEl.classList.add('hidden');
+        sourceListEl.classList.remove('hidden');
+        sliderLabel.textContent = 'Default Clones per Source';
+        sliderHint.classList.remove('hidden');
+        renderSourceList();
+    }
+}
+
 function clearFile() {
+    // In single-source mode, closing file info removes the single source
+    if (sourceFiles.length === 1) {
+        sourceFiles = [];
+    }
     currentFile = null;
-    document.getElementById('fileInfo').classList.add('hidden');
+    document.getElementById('btnStartClone').disabled = sourceFiles.length === 0;
+    document.getElementById('estimateSize').textContent = '-';
+    document.getElementById('estimateTime').textContent = '-';
+    updateSourceMode();
+}
+
+function removeSource(index) {
+    sourceFiles.splice(index, 1);
+    if (sourceFiles.length > 0) {
+        currentFile = sourceFiles[sourceFiles.length - 1];
+    } else {
+        currentFile = null;
+        document.getElementById('btnStartClone').disabled = true;
+    }
+    updateSourceMode();
+    updateEstimates();
+}
+
+function clearAllSources() {
+    sourceFiles = [];
+    currentFile = null;
     document.getElementById('btnStartClone').disabled = true;
     document.getElementById('estimateSize').textContent = '-';
     document.getElementById('estimateTime').textContent = '-';
+    updateSourceMode();
+}
+
+function updateSourceCloneCount(index, count) {
+    if (index >= 0 && index < sourceFiles.length) {
+        sourceFiles[index].cloneCount = Math.max(1, Math.min(100, parseInt(count) || 1));
+        updateTotalClonesLabel();
+        updateEstimates();
+    }
+}
+
+function updateTotalClonesLabel() {
+    const total = sourceFiles.reduce((sum, s) => sum + s.cloneCount, 0);
+    const el = document.getElementById('totalClonesLabel');
+    if (el) el.textContent = total;
+}
+
+function applySourceListCompactState() {
+    const container = document.getElementById('sourceListItems');
+    const toggleText = document.getElementById('sourceListToggleText');
+    const chevron = document.getElementById('sourceListChevron');
+    if (!container || !toggleText || !chevron) return;
+
+    container.classList.toggle('hidden', sourceListCollapsed);
+    toggleText.textContent = sourceListCollapsed ? 'Expand' : 'Collapse';
+    chevron.textContent = sourceListCollapsed ? 'expand_more' : 'expand_less';
+}
+
+function toggleSourceListCompact() {
+    sourceListCollapsed = !sourceListCollapsed;
+    sourceListManualOverride = true;
+    applySourceListCompactState();
+    pywebview.api.save_config({ source_list_collapsed: sourceListCollapsed }).catch(() => {});
+}
+
+function renderSourceList() {
+    const section = document.getElementById('sourceListSection');
+    const container = document.getElementById('sourceListItems');
+    const badge = document.getElementById('sourceCountBadge');
+
+    if (sourceFiles.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+
+    section.classList.remove('hidden');
+    badge.textContent = `(${sourceFiles.length})`;
+    updateTotalClonesLabel();
+
+    if (!sourceListManualOverride) {
+        sourceListCollapsed = sourceFiles.length > 20;
+    }
+    applySourceListCompactState();
+
+    container.innerHTML = '';
+    sourceFiles.forEach((src, idx) => {
+        const sizeNum = typeof src.size_mb === 'number' ? src.size_mb : parseFloat(src.size_mb);
+        const sizeText = src.size_mb ? `${src.size_mb} MB` : '-';
+        const isLargeDownload = Number.isFinite(sizeNum) && sizeNum > 5;
+        const sizeHtml = isLargeDownload
+            ? `<span class="text-red-400 font-bold">${escapeHtml(sizeText)}</span>`
+            : `<span>${escapeHtml(sizeText)}</span>`;
+        const durationText = escapeHtml(src.duration || '-');
+        const resolutionText = src.resolution ? ` · ${escapeHtml(String(src.resolution))}` : '';
+
+        const div = document.createElement('div');
+        div.className = 'bg-black/40 rounded-lg border border-white/5 px-2.5 py-2 flex items-center gap-2.5';
+        div.innerHTML = `
+            <div class="size-7 bg-primary/10 rounded-md flex items-center justify-center shrink-0">
+                <span class="material-symbols-outlined text-primary text-xs">videocam</span>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-[11px] font-semibold text-white truncate">${escapeHtml(src.filename || '-')}</p>
+                <p class="text-[10px] text-slate-500 truncate">${sizeHtml} · ${durationText}${resolutionText}</p>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+                <label class="text-[10px] text-slate-500">Clones:</label>
+                <input type="number" min="1" max="100" value="${src.cloneCount}"
+                    class="w-12 bg-black border border-white/10 rounded px-1.5 py-1 text-[11px] text-center text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary"
+                    onchange="updateSourceCloneCount(${idx}, this.value)"
+                    oninput="updateSourceCloneCount(${idx}, this.value)"/>
+            </div>
+            <button class="p-1 text-slate-500 hover:text-red-500 transition-colors rounded hover:bg-red-500/10" onclick="removeSource(${idx})" title="Remove source">
+                <span class="material-symbols-outlined text-xs">close</span>
+            </button>
+        `;
+        container.appendChild(div);
+    });
 }
 
 async function resetAll() {
@@ -435,9 +978,17 @@ async function resetAll() {
         isCloning = false;
     }
 
-    // Clear file
+    // Clear file & sources
     currentFile = null;
-    document.getElementById('fileInfo').classList.add('hidden');
+    sourceFiles = [];
+    sourceListCollapsed = false;
+    sourceListManualOverride = false;
+    updateSourceMode();
+
+    // Reset counters
+    textOverlayCounter = 0;
+    videoOverlayCounter = 0;
+    batchCancelled = false;
 
     // Reset clone controls
     document.getElementById('btnStartClone').classList.remove('hidden');
@@ -460,42 +1011,66 @@ async function resetAll() {
     document.getElementById('estimateSize').textContent = '-';
     document.getElementById('estimateTime').textContent = '-';
 
+    // Reset Video Effects — uncheck all
+    setAllEffects(false);
+    document.getElementById('fxWarning').style.display = 'none';
+
     // Reset BGM
     clearBgmFile();
     document.getElementById('rangeBgmVolume').value = 20;
     document.getElementById('bgmVolumeLabel').textContent = '20%';
     document.getElementById('chkBgmLoop').checked = true;
+    document.getElementById('inputBgmLinkUrl').value = '';
+    document.getElementById('bgmLinkProgress').classList.add('hidden');
+    document.getElementById('bgmLinkProgressBar').style.width = '0%';
+    document.getElementById('bgmLinkProgressPercent').textContent = '0%';
+    document.getElementById('selectBgmSource').value = 'tiktok';
+
+    // Reset Source Audio
+    document.getElementById('selectSourceAudio').value = 'keep';
+    document.getElementById('sourceAudioVolumeFields').style.display = 'none';
+    document.getElementById('rangeSourceAudioVolume').value = 100;
+    document.getElementById('sourceAudioVolumeLabel').textContent = '100%';
 
     // Reset Text Overlay
-    document.getElementById('chkTextOverlay').checked = false;
-    document.getElementById('textOverlayFields').style.display = 'none';
-    document.getElementById('inputOverlayText').value = '';
-    document.getElementById('rangeTextSize').value = 24;
-    document.getElementById('textSizeLabel').textContent = '24px';
-    document.getElementById('selectTextPosition').value = 'bottom-left';
-    document.getElementById('selectTextFont').value = 'arial.ttf';
-    document.getElementById('inputTextColor').value = '#ffffff';
-    document.getElementById('textColorHex').textContent = '#ffffff';
-    document.getElementById('textOverlayWarning').style.display = 'none';
-    updateTextPreview();
+    document.getElementById('textOverlayItems').innerHTML = '';
+    document.getElementById('textOverlayWarning').classList.add('hidden');
 
     // Reset Video Overlay
-    document.getElementById('chkVideoOverlay').checked = false;
-    document.getElementById('videoOverlayFields').style.display = 'none';
-    clearOverlayVideo();
-    document.getElementById('rangeOverlayVideoSize').value = 25;
-    document.getElementById('overlayVideoSizeLabel').textContent = '25%';
-    document.getElementById('selectOverlayVideoPosition').value = 'bottom-left';
-    document.getElementById('rangeOverlayVideoOpacity').value = 100;
-    document.getElementById('overlayVideoOpacityLabel').textContent = '100%';
-    document.getElementById('chkOverlayVideoLoop').checked = true;
-    document.getElementById('videoOverlayWarning').style.display = 'none';
+    document.getElementById('videoOverlayItems').innerHTML = '';
+    Object.keys(videoOverlayFiles).forEach(k => delete videoOverlayFiles[k]);
+    document.getElementById('videoOverlayWarning').classList.add('hidden');
 
-    // Reset link download area
+    // Reset panel collapse states (expand all)
+    ['effectsPanel', 'sourceAudioPanel', 'bgmPanel', 'textOverlayPanel', 'videoOverlayPanel', 'previewPanel'].forEach(id => {
+        document.getElementById(id).classList.remove('collapsed');
+    });
+    ['effectsChevron', 'sourceAudioChevron', 'bgmChevron', 'textOverlayChevron', 'videoOverlayChevron', 'previewChevron'].forEach(id => {
+        document.getElementById(id).classList.remove('rotated');
+    });
+
+    // Reset preview
+    updatePhonePreview();
+
+    // Reset single link download area
     document.getElementById('inputLinkUrl').value = '';
     document.getElementById('selectSource').value = 'tiktok';
     updateLinkPlaceholder();
     document.getElementById('linkProgress').classList.add('hidden');
+    document.getElementById('linkProgressBar').style.width = '0%';
+    document.getElementById('linkProgressPercent').textContent = '0%';
+
+    // Reset batch link download area
+    setLinkMode('single');
+    document.getElementById('inputBatchLinks').value = '';
+    document.getElementById('batchLinkCount').textContent = '0';
+    document.getElementById('batchProgressList').innerHTML = '';
+    document.getElementById('batchProgressList').classList.add('hidden');
+
+    // Reset FB scraper
+    document.getElementById('inputFbPageUrl').value = '';
+    document.getElementById('fbScrapeResults').classList.add('hidden');
+    document.getElementById('fbScrapeList').innerHTML = '';
 
     // Reload config defaults
     await loadConfig();
@@ -568,6 +1143,449 @@ async function downloadFromLink() {
 }
 
 // ========================================
+// BATCH LINK DOWNLOAD
+// ========================================
+
+function setLinkMode(mode) {
+    const btnSingle = document.getElementById('btnModeSingle');
+    const btnBatch = document.getElementById('btnModeBatch');
+    const singleMode = document.getElementById('singleLinkMode');
+    const batchMode = document.getElementById('batchLinkMode');
+
+    if (mode === 'batch') {
+        btnSingle.className = 'px-3 py-1 text-xs font-bold rounded-md transition-all text-slate-400 hover:text-slate-200';
+        btnBatch.className = 'px-3 py-1 text-xs font-bold rounded-md transition-all bg-primary/20 text-primary border border-primary/30';
+        singleMode.classList.add('hidden');
+        batchMode.classList.remove('hidden');
+    } else {
+        btnSingle.className = 'px-3 py-1 text-xs font-bold rounded-md transition-all bg-primary/20 text-primary border border-primary/30';
+        btnBatch.className = 'px-3 py-1 text-xs font-bold rounded-md transition-all text-slate-400 hover:text-slate-200';
+        singleMode.classList.remove('hidden');
+        batchMode.classList.add('hidden');
+    }
+}
+
+// ========================================
+// FB REELS SCRAPER
+// ========================================
+
+async function scrapeFbReels() {
+    const url = document.getElementById('inputFbPageUrl').value.trim();
+    if (!url) {
+        alert('Please paste a Facebook page reels URL first.');
+        return;
+    }
+
+    const limitVal = parseInt(document.getElementById('inputFbScrapeLimit').value, 10);
+    const limit = Number.isFinite(limitVal) && limitVal > 0 ? limitVal : 0;
+    const scrollVal = parseInt(document.getElementById('inputFbScrollCount').value, 10);
+    const scrollCount = Number.isFinite(scrollVal) ? Math.max(1, Math.min(scrollVal, 50)) : 5;
+    const order = document.getElementById('selectFbScrapeOrder').value === 'desc' ? 'desc' : 'asc';
+
+    const btn = document.getElementById('btnScrapeFbReels');
+    const resultsEl = document.getElementById('fbScrapeResults');
+    const listEl = document.getElementById('fbScrapeList');
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="size-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div> Scrolling...';
+
+    const result = await pywebview.api.scrape_fb_reels(url, limit, scrollCount, order);
+
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined text-sm">search</span> Scrape';
+    checkFbLoginStatus();
+
+    if (result && result.error) {
+        alert('Scrape Error: ' + result.error);
+        return;
+    }
+
+    if (result && result.links && result.links.length > 0) {
+        document.getElementById('fbScrapeCount').textContent = result.count;
+        
+        // Render compact summary view with numbering
+        const summaryEl = document.getElementById('fbScrapeSummary');
+        summaryEl.innerHTML = '';
+        result.links.slice(0, 30).forEach((link, i) => {
+            const btn = document.createElement('label');
+            btn.className = 'text-[9px] font-bold text-slate-300 bg-black/50 border border-blue-500/30 rounded py-1 px-1 hover:bg-blue-600/20 hover:border-blue-400/50 transition-all cursor-pointer flex items-center justify-center';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'fb-scrape-chk';
+            checkbox.value = link;
+            checkbox.checked = true;
+            checkbox.style.marginRight = '4px';
+            const span = document.createElement('span');
+            span.textContent = `#${i + 1}`;
+            btn.appendChild(checkbox);
+            btn.appendChild(span);
+            summaryEl.appendChild(btn);
+        });
+        
+        // Add "and more" indicator if > 30
+        if (result.links.length > 30) {
+            const moreBtn = document.createElement('div');
+            moreBtn.className = 'text-[9px] text-slate-500 bg-black/30 border border-white/10 rounded py-1 px-1 text-center font-bold';
+            moreBtn.textContent = `+${result.links.length - 30} more`;
+            summaryEl.appendChild(moreBtn);
+        }
+        
+        // Render full list for details view
+        const listEl = document.getElementById('fbScrapeList');
+        listEl.innerHTML = '';
+        result.links.forEach((link, i) => {
+            const row = document.createElement('label');
+            row.className = 'flex items-center gap-2 bg-black/40 rounded px-2 py-1 border border-white/5 cursor-pointer hover:border-blue-500/30 transition-colors';
+            row.innerHTML = `<input type="checkbox" checked class="fb-scrape-chk accent-blue-500 shrink-0" value="${link}"/>
+                <span class="text-[10px] text-slate-500 shrink-0">#${i + 1}</span>
+                <span class="text-[10px] text-slate-300 truncate flex-1" title="${link}">${link}</span>`;
+            listEl.appendChild(row);
+        });
+        
+        // Setup toggle button
+        const toggleBtn = document.getElementById('btnToggleFbDetails');
+        const detailsContainer = document.getElementById('fbScrapeDetailsContainer');
+        toggleBtn.onclick = () => {
+            detailsContainer.classList.toggle('hidden');
+            toggleBtn.innerHTML = detailsContainer.classList.contains('hidden') 
+                ? '<span class="material-symbols-outlined text-sm align-middle">expand_more</span>'
+                : '<span class="material-symbols-outlined text-sm align-middle">expand_less</span>';
+        };
+        
+        resultsEl.classList.remove('hidden');
+    }
+}
+
+function fbScrapeSelectAll(checked) {
+    document.querySelectorAll('#fbScrapeList .fb-scrape-chk').forEach(chk => { chk.checked = checked; });
+}
+
+function fbAddSelectedToBatch() {
+    const selected = [];
+    document.querySelectorAll('#fbScrapeList .fb-scrape-chk:checked').forEach(chk => {
+        selected.push(chk.value);
+    });
+
+    if (selected.length === 0) {
+        alert('No links selected.');
+        return;
+    }
+
+    const textarea = document.getElementById('inputBatchLinks');
+    const existingLines = textarea.value
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean);
+    const merged = Array.from(new Set([...existingLines, ...selected]));
+    textarea.value = merged.join('\n');
+    updateBatchLinkCount();
+
+    // Clear scrape results
+    document.getElementById('fbScrapeResults').classList.add('hidden');
+    document.getElementById('fbScrapeList').innerHTML = '';
+    document.getElementById('inputFbPageUrl').value = '';
+}
+
+async function checkFbLoginStatus() {
+    try {
+        const res = await pywebview.api.fb_check_login();
+        const dot = document.getElementById('fbLoginDot');
+        const btnLogin = document.getElementById('btnFbLogin');
+        const btnLogout = document.getElementById('btnFbLogout');
+        const hint = document.getElementById('fbLoginHint');
+        if (res && res.logged_in) {
+            dot.className = 'size-2 rounded-full bg-green-500';
+            btnLogin.classList.add('hidden');
+            btnLogout.classList.remove('hidden');
+            hint.classList.add('hidden');
+        } else {
+            dot.className = 'size-2 rounded-full bg-red-500';
+            btnLogin.classList.remove('hidden');
+            btnLogout.classList.add('hidden');
+            hint.classList.remove('hidden');
+        }
+    } catch(e) {}
+}
+
+async function fbLogin() {
+    const btn = document.getElementById('btnFbLogin');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined text-[12px] animate-spin">progress_activity</span> Opening...';
+    try {
+        const res = await pywebview.api.fb_login();
+        if (res && res.error) {
+            alert(res.error);
+        } else {
+            alert('Chrome window opened. Login to Facebook, then the window will close automatically.\n\nAfter login, click Scrape again.');
+            // Poll for login completion
+            const poll = setInterval(async () => {
+                const status = await pywebview.api.fb_check_login();
+                if (status && status.logged_in) {
+                    clearInterval(poll);
+                    checkFbLoginStatus();
+                }
+            }, 3000);
+            setTimeout(() => clearInterval(poll), 320000);
+        }
+    } catch(e) {
+        alert('Failed to open login window: ' + e);
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined text-[12px]">login</span> Login FB';
+}
+
+async function fbLogout() {
+    if (!confirm('Logout dari Facebook? Session scraping akan dihapus.')) return;
+    await pywebview.api.fb_logout();
+    checkFbLoginStatus();
+}
+
+function detectSourceFromUrl(url) {
+    url = url.toLowerCase();
+    if (url.includes('tiktok.com')) return 'tiktok';
+    if (url.includes('instagram.com')) return 'reels';
+    if (url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.com')) return 'fbreels';
+    if (url.includes('youtube.com') || url.includes('youtu.be')) return 'ytshorts';
+    if (url.includes('drive.google.com')) return 'gdrive';
+    return null;
+}
+
+function parseBatchLinks() {
+    const text = document.getElementById('inputBatchLinks').value;
+    return text.split('\n').map(l => l.trim()).filter(l => l && (l.startsWith('http://') || l.startsWith('https://')));
+}
+
+function updateBatchLinkCount() {
+    const links = parseBatchLinks();
+    document.getElementById('batchLinkCount').textContent = links.length;
+}
+
+let batchCancelled = false;
+
+async function batchDownloadFromLinks() {
+    const links = Array.from(new Set(parseBatchLinks()));
+    if (links.length === 0) {
+        alert('No valid links found. Paste one URL per line.');
+        return;
+    }
+
+    batchCancelled = false;
+    const btn = document.getElementById('btnBatchDownload');
+    const listEl = document.getElementById('batchProgressList');
+    listEl.classList.remove('hidden');
+    listEl.innerHTML = `
+        <div class="bg-black/60 border border-white/10 rounded-lg p-3 space-y-2">
+            <div class="flex items-center justify-between gap-3">
+                <p class="text-xs text-slate-300 font-semibold">Batch Download Progress</p>
+                <p class="text-xs text-primary font-bold" id="batchCompactRatio">0/0</p>
+            </div>
+            <div class="h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
+                <div class="h-full bg-primary transition-all duration-300" id="batchCompactBar" style="width:0%"></div>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5 text-[10px]">
+                <div class="bg-black/50 rounded px-2 py-1 border border-white/10 text-slate-400">Total <span class="font-bold text-slate-300" id="batchCompactTotal">0</span></div>
+                <div class="bg-black/50 rounded px-2 py-1 border border-white/10 text-blue-300">Running <span class="font-bold" id="batchCompactRunning">0</span></div>
+                <div class="bg-black/50 rounded px-2 py-1 border border-white/10 text-green-300">Done <span class="font-bold" id="batchCompactSuccess">0</span></div>
+                <div class="bg-black/50 rounded px-2 py-1 border border-white/10 text-red-300">Fail <span class="font-bold" id="batchCompactFail">0</span></div>
+            </div>
+            <div class="text-[10px] text-slate-500 truncate" id="batchCompactCurrent">Waiting to start...</div>
+            <div class="flex items-center justify-between gap-2 text-[10px]">
+                <button class="px-2 py-1 rounded border border-white/10 text-slate-300 hover:text-white hover:border-white/20 transition-all" id="batchToggleDetails">Show Details</button>
+                <label class="flex items-center gap-1.5 text-slate-400">
+                    <input type="checkbox" class="accent-primary" id="batchAutoHide" ${batchAutoHidePreference ? 'checked' : ''}/>
+                    Auto-hide after complete
+                </label>
+            </div>
+            <div class="space-y-1 max-h-28 overflow-y-auto" id="batchCompactLog"></div>
+            <div class="hidden space-y-1 max-h-40 overflow-y-auto border border-white/10 rounded p-2 bg-black/40" id="batchCompactDetails"></div>
+        </div>`;
+
+    const ratioEl = document.getElementById('batchCompactRatio');
+    const barEl = document.getElementById('batchCompactBar');
+    const totalEl = document.getElementById('batchCompactTotal');
+    const runningEl = document.getElementById('batchCompactRunning');
+    const successEl = document.getElementById('batchCompactSuccess');
+    const failEl = document.getElementById('batchCompactFail');
+    const currentEl = document.getElementById('batchCompactCurrent');
+    const logEl = document.getElementById('batchCompactLog');
+    const detailsEl = document.getElementById('batchCompactDetails');
+    const detailsToggleEl = document.getElementById('batchToggleDetails');
+    const autoHideEl = document.getElementById('batchAutoHide');
+
+    detailsToggleEl.onclick = () => {
+        detailsEl.classList.toggle('hidden');
+        detailsToggleEl.textContent = detailsEl.classList.contains('hidden') ? 'Show Details' : 'Hide Details';
+    };
+
+    autoHideEl.onchange = async () => {
+        batchAutoHidePreference = autoHideEl.checked;
+        try {
+            await pywebview.api.save_config({ default_batch_auto_hide: batchAutoHidePreference });
+        } catch (e) {
+            // Keep running even when persisting settings fails.
+        }
+    };
+
+    const pushCompactLog = (icon, textClass, text) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 bg-black/40 rounded px-2 py-1 border border-white/5';
+        row.innerHTML = `<span class="material-symbols-outlined text-xs ${icon.color}">${icon.name}</span>
+            <span class="text-[10px] ${textClass} truncate" title="${text}">${text}</span>`;
+        logEl.prepend(row);
+        while (logEl.childElementCount > 8) {
+            logEl.removeChild(logEl.lastElementChild);
+        }
+    };
+
+    const updateCompact = (state) => {
+        const finished = state.success + state.fail;
+        const percent = state.total > 0 ? Math.round((finished / state.total) * 100) : 0;
+        ratioEl.textContent = `${finished}/${state.total}`;
+        barEl.style.width = `${percent}%`;
+        totalEl.textContent = String(state.total);
+        runningEl.textContent = String(state.running);
+        successEl.textContent = String(state.success);
+        failEl.textContent = String(state.fail);
+        currentEl.textContent = state.current || 'Waiting to start...';
+    };
+
+    const detailRows = [];
+    const createDetailRow = (idx, url, label) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 bg-black/50 rounded px-2 py-1 border border-white/5';
+        row.innerHTML = `<span class="text-[10px] text-slate-500 shrink-0">#${idx}</span>
+            <span class="material-symbols-outlined text-xs text-slate-500 batch-detail-icon">hourglass_empty</span>
+            <span class="text-[10px] text-slate-400 truncate flex-1" title="${url}">${url}</span>
+            <span class="text-[10px] text-slate-500 font-bold shrink-0 batch-detail-status">${label} · Pending</span>`;
+        detailsEl.appendChild(row);
+        const refs = {
+            row,
+            iconEl: row.querySelector('.batch-detail-icon'),
+            statusEl: row.querySelector('.batch-detail-status')
+        };
+        detailRows.push(refs);
+        return refs;
+    };
+
+    // Build items with auto-detected sources
+    const items = [];
+    let unknownCount = 0;
+    for (let idx = 0; idx < links.length; idx++) {
+        const url = links[idx];
+        const source = detectSourceFromUrl(url);
+        if (!source) {
+            unknownCount++;
+            pushCompactLog({ name: 'error', color: 'text-red-500' }, 'text-red-300', `Unknown platform: ${url}`);
+            const detail = createDetailRow(idx + 1, url, 'Unknown');
+            detail.iconEl.textContent = 'error';
+            detail.iconEl.className = 'material-symbols-outlined text-xs text-red-500 batch-detail-icon';
+            detail.statusEl.textContent = 'Unknown platform';
+            detail.statusEl.className = 'text-[10px] text-red-300 font-bold shrink-0 batch-detail-status';
+            continue;
+        }
+        const config = SOURCE_CONFIG[source];
+        const detail = createDetailRow(idx + 1, url, config.label);
+        items.push({ url, source, config, detail });
+    }
+
+    if (items.length === 0) {
+        alert('No recognized platform links found.');
+        return;
+    }
+
+    const compactState = {
+        total: links.length,
+        running: 0,
+        success: 0,
+        fail: unknownCount,
+        current: 'Starting...'
+    };
+    updateCompact(compactState);
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div> Downloading...';
+
+    let successCount = 0;
+    let failCount = unknownCount;
+
+    for (let i = 0; i < items.length; i++) {
+        if (batchCancelled) break;
+        const { url, source, config, detail } = items[i];
+        compactState.running = 1;
+        compactState.current = `${config.label} · Downloading (${i + 1}/${items.length})`;
+        updateCompact(compactState);
+        btn.innerHTML = `<div class="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div> ${i + 1}/${items.length}`;
+
+        detail.iconEl.textContent = 'downloading';
+        detail.iconEl.className = 'material-symbols-outlined text-xs text-primary batch-detail-icon animate-pulse';
+        detail.statusEl.textContent = `${config.label} · Downloading...`;
+        detail.statusEl.className = 'text-[10px] text-primary font-bold shrink-0 batch-detail-status';
+
+        // Poll progress
+        const poll = setInterval(async () => {
+            const prog = await pywebview.api[config.progress]();
+            if (prog) {
+                const mb = prog.downloaded_mb || 0;
+                const total = prog.total_mb ? ` / ${prog.total_mb} MB` : '';
+                const statusLabel = prog.status === 'resolving' ? 'Resolving...'
+                    : prog.status === 'fetching_info' ? 'Fetching info...'
+                    : `${prog.percent}% · ${mb} MB${total}`;
+                compactState.current = `${config.label} · ${statusLabel}`;
+                updateCompact(compactState);
+                detail.statusEl.textContent = `${config.label} · ${statusLabel}`;
+            }
+        }, 500);
+
+        const info = await pywebview.api[config.api](url);
+        clearInterval(poll);
+
+        if (info && info.error) {
+            failCount++;
+            compactState.fail = failCount;
+            pushCompactLog({ name: 'error', color: 'text-red-500' }, 'text-red-300', `${config.label}: ${info.error}`);
+            detail.iconEl.textContent = 'error';
+            detail.iconEl.className = 'material-symbols-outlined text-xs text-red-500 batch-detail-icon';
+            detail.statusEl.textContent = `${config.label} · Failed`;
+            detail.statusEl.className = 'text-[10px] text-red-300 font-bold shrink-0 batch-detail-status';
+        } else if (info) {
+            onFileSelected(info);
+            successCount++;
+            compactState.success = successCount;
+            pushCompactLog({ name: 'check_circle', color: 'text-green-500' }, 'text-green-300', `${config.label}: Done (${i + 1}/${items.length})`);
+            detail.iconEl.textContent = 'check_circle';
+            detail.iconEl.className = 'material-symbols-outlined text-xs text-green-500 batch-detail-icon';
+            detail.statusEl.textContent = `${config.label} · Done`;
+            detail.statusEl.className = 'text-[10px] text-green-300 font-bold shrink-0 batch-detail-status';
+        }
+
+        compactState.running = 0;
+        updateCompact(compactState);
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined text-base">cloud_download</span> Download All';
+
+    if (successCount > 0) {
+        document.getElementById('inputBatchLinks').value = '';
+        updateBatchLinkCount();
+    }
+
+    compactState.running = 0;
+    compactState.current = batchCancelled ? 'Batch cancelled.' : 'Batch finished.';
+    updateCompact(compactState);
+
+    if (batchAutoHidePreference) {
+        setTimeout(() => {
+            listEl.classList.add('hidden');
+        }, 2500);
+    }
+
+    const msg = batchCancelled ? `Batch cancelled. ${successCount} downloaded, ${failCount} failed.`
+        : `Batch complete! ${successCount} downloaded` + (failCount > 0 ? `, ${failCount} failed.` : '.');
+    alert(msg);
+}
+
+// ========================================
 // OUTPUT FOLDER
 // ========================================
 async function selectOutputFolder() {
@@ -582,23 +1600,30 @@ async function selectOutputFolder() {
 // CLONING
 // ========================================
 async function startCloning() {
-    if (!currentFile || isCloning) return;
+    if (sourceFiles.length === 0 || isCloning) return;
 
     const effects = getSelectedEffects();
     const bgmOptions = getBgmOptions();
-    const textOverlay = getTextOverlayOptions();
-    const videoOverlay = getVideoOverlayOptions();
+    const textOverlays = getTextOverlayOptions();
+    const videoOverlays = getVideoOverlayOptions();
+
+    const sources = sourceFiles.map(s => ({
+        filepath: s.filepath,
+        count: s.cloneCount,
+    }));
+
     const options = {
-        source: currentFile.filepath,
-        count: parseInt(document.getElementById('rangeCloneCount').value),
+        sources: sources,
         method: document.getElementById('selectMethod').value,
+        quality: document.getElementById('selectQuality').value,
         format: document.getElementById('selectFormat').value,
         output_folder: outputFolder || '',
         template: document.getElementById('inputTemplate').value,
         effects: effects,
         bgm: bgmOptions,
-        text_overlay: textOverlay,
-        video_overlay: videoOverlay,
+        source_audio: getSourceAudioOptions(),
+        text_overlays: textOverlays,
+        video_overlays: videoOverlays,
     };
 
     const result = await pywebview.api.start_cloning(options);
@@ -758,21 +1783,26 @@ function onCloneError(data) {
 // ESTIMATES
 // ========================================
 function updateEstimates() {
-    if (!currentFile) return;
+    if (sourceFiles.length === 0) return;
 
-    const count = parseInt(document.getElementById('rangeCloneCount').value);
     const method = document.getElementById('selectMethod').value;
-    const sizeMB = currentFile.size_mb || 0;
 
-    // Size estimate
-    const totalSize = (sizeMB * count).toFixed(1);
+    // Size estimate: sum of (each source size × its clone count)
+    let totalSize = 0;
+    let totalClones = 0;
+    sourceFiles.forEach(src => {
+        totalSize += (src.size_mb || 0) * src.cloneCount;
+        totalClones += src.cloneCount;
+    });
+    totalSize = totalSize.toFixed(1);
+
     document.getElementById('estimateSize').textContent = totalSize >= 1024
         ? `${(totalSize / 1024).toFixed(1)} GB`
         : `${totalSize} MB`;
 
     // Time estimate
     const perClone = method === 'fast' ? 4 : 15;
-    const totalSec = perClone * count;
+    const totalSec = perClone * totalClones;
     if (totalSec >= 60) {
         const min = Math.floor(totalSec / 60);
         const sec = totalSec % 60;
@@ -788,7 +1818,7 @@ function updateEstimates() {
 function updateTemplatePreview() {
     const template = document.getElementById('inputTemplate').value;
     const fmt = document.getElementById('selectFormat').value;
-    const title = currentFile ? currentFile.filename.replace(/\.[^/.]+$/, '') : 'my_video';
+    const title = (currentFile || sourceFiles[0]) ? (currentFile || sourceFiles[0]).filename.replace(/\.[^/.]+$/, '') : 'my_video';
     const now = new Date();
     const date = now.toISOString().slice(0, 10);
     const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
@@ -908,13 +1938,23 @@ async function loadConfig() {
     if (!config) return;
 
     // Apply to main view
-    document.getElementById('rangeCloneCount').value = config.default_clone_count || 10;
-    document.getElementById('cloneCountLabel').textContent = config.default_clone_count || 10;
+    document.getElementById('rangeCloneCount').value = config.default_clone_count || 1;
+    document.getElementById('cloneCountLabel').textContent = config.default_clone_count || 1;
     document.getElementById('selectFormat').value = config.default_format || 'mp4';
-    document.getElementById('selectMethod').value = config.default_method || 'fast';
-    document.getElementById('inputTemplate').value = config.default_template || '{title}_clone{index}_{date}';
+    document.getElementById('selectMethod').value = config.default_method || 'standard';
+    document.getElementById('selectQuality').value = config.default_quality || '1080p';
+    document.getElementById('qualityWarning').style.display = 'none';
+    document.getElementById('inputTemplate').value = config.default_template || '{index}';
 
     outputFolder = config.default_output_folder || '';
+    batchAutoHidePreference = config.default_batch_auto_hide !== false;
+    if (typeof config.source_list_collapsed === 'boolean') {
+        sourceListCollapsed = config.source_list_collapsed;
+        sourceListManualOverride = true;
+    } else {
+        sourceListCollapsed = false;
+        sourceListManualOverride = false;
+    }
     document.getElementById('inputOutputFolder').value = outputFolder;
     document.getElementById('inputOutputFolder').placeholder = outputFolder || 'Same as source file';
 
@@ -929,21 +1969,34 @@ async function loadConfig() {
 
     // Apply to settings modal
     document.getElementById('settingsFFmpegPath').value = config.ffmpeg_path || './ffmpeg/ffmpeg.exe';
-    document.getElementById('settingsCloneCount').value = config.default_clone_count || 10;
+    document.getElementById('settingsCloneCount').value = config.default_clone_count || 1;
     document.getElementById('settingsFormat').value = config.default_format || 'mp4';
-    document.getElementById('settingsTemplate').value = config.default_template || '{title}_clone{index}_{date}';
+    document.getElementById('settingsTemplate').value = config.default_template || '{index}';
 
     // Toggles
     setToggle(document.getElementById('togglePopup'), config.notify_popup !== false);
     setToggle(document.getElementById('toggleSound'), config.notify_sound !== false);
+    setToggle(document.getElementById('toggleBatchAutoHide'), config.default_batch_auto_hide !== false);
+    setToggle(document.getElementById('toggleSourceListCollapsed'), config.source_list_collapsed === true);
+
+    // Apply current compact state immediately when source list is visible.
+    applySourceListCompactState();
 }
 
 async function saveSettings() {
+    const autoHideFromSettings = document.getElementById('toggleBatchAutoHide').classList.contains('bg-primary');
+    const sourceListCollapsedFromSettings = document.getElementById('toggleSourceListCollapsed').classList.contains('bg-primary');
+    batchAutoHidePreference = autoHideFromSettings;
+    sourceListCollapsed = sourceListCollapsedFromSettings;
+    sourceListManualOverride = true;
+
     const config = {
         ffmpeg_path: document.getElementById('settingsFFmpegPath').value,
         default_clone_count: parseInt(document.getElementById('settingsCloneCount').value) || 10,
         default_format: document.getElementById('settingsFormat').value,
         default_template: document.getElementById('settingsTemplate').value,
+        default_batch_auto_hide: autoHideFromSettings,
+        source_list_collapsed: sourceListCollapsedFromSettings,
         notify_popup: document.getElementById('togglePopup').classList.contains('bg-primary'),
         notify_sound: document.getElementById('toggleSound').classList.contains('bg-primary'),
     };
@@ -1001,4 +2054,94 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+}
+
+// ========================================
+// OVERLAY PREVIEW (Phone Frame)
+// ========================================
+const POSITION_STYLES = {
+    'top-left':      { top: '6%', left: '5%' },
+    'top-center':    { top: '6%', left: '50%', transform: 'translateX(-50%)' },
+    'top-right':     { top: '6%', right: '5%' },
+    'center':        { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' },
+    'bottom-left':   { bottom: '6%', left: '5%' },
+    'bottom-center': { bottom: '6%', left: '50%', transform: 'translateX(-50%)' },
+    'bottom-right':  { bottom: '6%', right: '5%' },
+};
+
+const PIP_POSITION_STYLES = {
+    'top-left':     { top: '4%', left: '4%' },
+    'top-right':    { top: '4%', right: '4%' },
+    'bottom-left':  { bottom: '4%', left: '4%' },
+    'bottom-right': { bottom: '4%', right: '4%' },
+    'center':       { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' },
+};
+
+function updatePhonePreview() {
+    const screen = document.getElementById('phoneScreen');
+    if (!screen) return;
+
+    // Remove old overlay indicators
+    screen.querySelectorAll('.phone-text-overlay, .phone-video-overlay').forEach(el => el.remove());
+
+    let hasOverlays = false;
+
+    // --- Text Overlays ---
+    document.querySelectorAll('#textOverlayItems > div').forEach((card, i) => {
+        const text = card.querySelector('.txt-overlay-text').value.trim();
+        if (!text) return;
+        hasOverlays = true;
+
+        const fontSize = parseInt(card.querySelector('.txt-overlay-size').value);
+        const position = card.querySelector('.txt-overlay-position').value;
+        const color = card.querySelector('.txt-overlay-color').value;
+        const fontFile = card.querySelector('.txt-overlay-font').value;
+        const fontFamily = FONT_FAMILY_MAP[fontFile] || 'Arial';
+
+        const el = document.createElement('div');
+        el.className = 'phone-text-overlay';
+
+        // Scale font size: source ~24px on a 1080 video -> preview ~8px on 188px screen
+        const scaledSize = Math.max(6, Math.round(fontSize * 0.33));
+        el.style.fontSize = scaledSize + 'px';
+        el.style.color = color;
+        el.style.fontFamily = fontFamily + ', sans-serif';
+
+        const pos = POSITION_STYLES[position] || POSITION_STYLES['bottom-left'];
+        Object.assign(el.style, { top: '', bottom: '', left: '', right: '', transform: '' });
+        Object.assign(el.style, pos);
+
+        el.textContent = text;
+        screen.appendChild(el);
+    });
+
+    // --- Video Overlays ---
+    document.querySelectorAll('#videoOverlayItems > div').forEach((card, i) => {
+        hasOverlays = true;
+
+        const sizePct = parseInt(card.querySelector('.vid-overlay-size').value);
+        const position = card.querySelector('.vid-overlay-position').value;
+        const opacity = parseInt(card.querySelector('.vid-overlay-opacity').value);
+
+        const el = document.createElement('div');
+        el.className = 'phone-video-overlay';
+        el.style.width = sizePct + '%';
+        el.style.aspectRatio = '9 / 16';
+        el.style.opacity = opacity / 100;
+
+        const pos = PIP_POSITION_STYLES[position] || PIP_POSITION_STYLES['bottom-left'];
+        Object.assign(el.style, { top: '', bottom: '', left: '', right: '', transform: '' });
+        Object.assign(el.style, pos);
+
+        const isChromakey = card.querySelector('.vid-overlay-chromakey').checked;
+        const ckIcon = isChromakey ? 'auto_fix_high' : 'videocam';
+        const ckLabel = isChromakey ? 'GS' : 'PiP';
+        if (isChromakey) el.style.border = '2px dashed #00ff0088';
+        el.innerHTML = `<div style="text-align:center"><span class="material-symbols-outlined phone-video-overlay-icon">${ckIcon}</span><div class="phone-video-overlay-label">${ckLabel} #${i + 1}<br>${sizePct}%</div></div>`;
+        screen.appendChild(el);
+    });
+
+    // Toggle empty hint
+    const hint = document.getElementById('phoneEmptyHint');
+    if (hint) hint.style.display = hasOverlays ? 'none' : 'flex';
 }

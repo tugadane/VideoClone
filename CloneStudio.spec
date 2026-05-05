@@ -17,6 +17,7 @@ a = Analysis(
     datas=[
         (os.path.join(WEB_DIR, 'index.html'), 'web'),
         (os.path.join(WEB_DIR, 'app.js'), 'web'),
+        (os.path.join(WEB_DIR, 'styles.css'), 'web'),
     ],
     hiddenimports=[
         'webview',
@@ -35,6 +36,12 @@ a = Analysis(
         'yt_dlp.extractor.lazy_extractors',
         'yt_dlp.downloader',
         'yt_dlp.postprocessor',
+        'requests',
+        'requests.adapters',
+        'urllib3',
+        'charset_normalizer',
+        'certifi',
+        'idna',
         'winsound',
         'http.cookiejar',
         'urllib.request',
