@@ -6,6 +6,13 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.6.1] — 2026-05-05
+
+### Changed
+- Placeholder Batch Links diperbarui untuk menyebutkan dukungan **YouTube Shorts** dan **Shopee** secara eksplisit, plus dua contoh URL tambahan. Batch Shopee sebenarnya sudah berfungsi sejak v0.6.0 — patch ini hanya UX clarity.
+
+---
+
 ## [v0.6.0] — 2026-05-05
 
 ### Added
