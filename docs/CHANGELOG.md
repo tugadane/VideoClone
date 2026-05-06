@@ -6,6 +6,69 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.6.3] — 2026-05-06
+
+### Performance
+- **Watermark pre-pass jauh lebih cepat.** Encoder pre-pass diturunkan dari `libx264 -preset fast -crf 20` ke `libx264 -preset ultrafast -crf 23`. File hasil pre-pass lebih besar tapi cuma intermediate (di-re-encode lagi oleh clone step), jadi tidak berpengaruh ke kualitas akhir. Speedup ~3.9× per source pada uji 480×854 / 52 detik (26.4 dt → 6.7 dt).
+- **Pre-pass dijalankan paralel.** Hingga 3 ffmpeg jobs paralel (skala dengan jumlah core CPU, dibatasi ~setengah core dengan max 3) sehingga batch 100 source jauh lebih cepat sebelum cloning dimulai.
+- `cancel()` sekarang juga membunuh ffmpeg pre-pass yang sedang berjalan, bukan hanya proses clone aktif.
+
+### Fixed
+- Naming template `{title}` sekarang tetap memakai nama source asli kamu (mis. `shopee_xxxx`), bukan nama temp file `wmrem_xxxxxxxx` yang muncul setelah pre-pass watermark di v0.6.0–v0.6.2.
+
+### Changed
+- UI progress sekarang menampilkan tahap pre-pass: label "Preprocessing watermark... X/Y" + progress bar dan counter ikut maju selama pre-pass, jadi tidak terlihat seperti aplikasi hang di "Processing clone #0... 0%" saat batch besar (mis. 100 video Shopee).
+
+---
+
+## [v0.6.2] — 2026-05-05
+
+### Fixed
+- Batch download Shopee gagal dengan pesan "Downloaded file is not a valid video" pada video yang punya **emoji** di caption (mis. `😍`). Root cause: caption dipakai untuk nama file, dan ffprobe.exe tidak bisa membuka path dengan karakter di luar Windows system codepage. Fix: helper `_safe_filename()` baru yang strip non-ASCII; diterapkan ke Shopee, TikTok, plus opsi `restrictfilenames=True` untuk yt-dlp (Reels/YT Shorts/FB Reels).
+- Error message untuk URL Shopee non-video (mis. `s.shopee.co.id/...` yang resolve ke halaman produk) sekarang spesifik: "Shopee URL bukan halaman video..." daripada pesan generic.
+
+---
+
+## [v0.6.1] — 2026-05-05
+
+### Changed
+- Placeholder Batch Links diperbarui untuk menyebutkan dukungan **YouTube Shorts** dan **Shopee** secara eksplisit, plus dua contoh URL tambahan. Batch Shopee sebenarnya sudah berfungsi sejak v0.6.0 — patch ini hanya UX clarity.
+
+---
+
+## [v0.6.0] — 2026-05-05
+
+### Added
+- **Hide Watermark Region** — panel baru untuk menutup/menghilangkan watermark statis pada video sumber sebelum cloning.
+  - 4 metode: `delogo`, `delogo_blur` (rekomendasi), `blur` (sensor), `cover` (drawbox solid).
+  - Region didefinisikan dalam persentase (X/Y/W/H) sehingga konsisten lintas resolusi.
+  - Tombol preset cepat: Shopee (kiri-tengah), TikTok atas, TikTok bawah, IG atas, YT Shorts bawah.
+  - Auto-hide Shopee saat source `source_platform == 'shopee'` (default ON).
+  - Pre-pass FFmpeg dijalankan satu kali per source (bukan per clone) → efisien.
+- Setiap method `download_from_*` di `src/api.py` mengembalikan `source_platform` sehingga frontend tahu platform asal file dan dapat menampilkan badge di source list.
+- Badge platform asal di kartu source list (Shopee / TikTok / IG Reels / FB Reels / YT Shorts / GDrive).
+
+### Changed
+- `src/cloner.py` — refactor minor: `_run()` kini melakukan `_preprocess_watermark_all()` sebelum loop clone. `__init__` menyimpan `_source_platforms` dan `_preprocessed_files` untuk pengelolaan temp file.
+
+---
+
+## [v0.5.0] — 2026-05-05
+
+### Added
+- **Dukungan download video Shopee** — opsi platform baru `Shopee` di Single Link, Batch Links (auto-detect), Background Music link, dan Video Overlay link.
+  - Mendukung short link `id.shp.ee/...` / `shp.ee/...` (dan regional lain) serta link share `sv.shopee.<region>/share-video/...`.
+  - Resolusi otomatis melalui rantai redirect Shopee (universal-link → share-video).
+  - Ekstraksi MP4 dari blok `__NEXT_DATA__` Next.js pada halaman share.
+  - Reuse oleh modul BGM extractor — Shopee bisa dijadikan sumber audio.
+
+### Changed
+- `src/api.py` — registrasi `'shopee'` di `download_methods` `extract_bgm_from_link`.
+- `src/web/index.html` — opsi `Shopee` di `#selectSource` dan `#selectBgmSource`.
+- `src/web/app.js` — `SOURCE_CONFIG.shopee`, label di BGM dialog, deteksi URL Shopee di `detectSourceFromUrl()`, dan opsi di template Video Overlay.
+
+---
+
 ## [v0.4.0] — 2026-04-08
 
 ### Added

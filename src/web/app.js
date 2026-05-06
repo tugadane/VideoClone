@@ -173,6 +173,13 @@ function setupEventListeners() {
     document.getElementById('btnToggleVideoOverlay').addEventListener('click', toggleVideoOverlayPanel);
     document.getElementById('btnAddVideoOverlay').addEventListener('click', addVideoOverlay);
 
+    // Hide Watermark Region
+    document.getElementById('btnToggleWatermarkHide').addEventListener('click', toggleWatermarkHidePanel);
+    document.getElementById('btnAddWatermarkRegion').addEventListener('click', () => addWatermarkRegion());
+    document.querySelectorAll('[data-wm-preset]').forEach(btn => {
+        btn.addEventListener('click', () => addWatermarkRegion(btn.getAttribute('data-wm-preset')));
+    });
+
     // Overlay Preview
     document.getElementById('btnTogglePreview').addEventListener('click', togglePreviewPanel);
 
@@ -283,7 +290,7 @@ function clearBgmFile() {
 async function downloadBgmFromLink() {
     const url = document.getElementById('inputBgmLinkUrl').value.trim();
     const source = document.getElementById('selectBgmSource').value;
-    const labels = { tiktok: 'TikTok', reels: 'Instagram Reels', fbreels: 'Facebook Reels', ytshorts: 'YouTube Shorts' };
+    const labels = { tiktok: 'TikTok', reels: 'Instagram Reels', fbreels: 'Facebook Reels', ytshorts: 'YouTube Shorts', shopee: 'Shopee' };
 
     if (!url) {
         alert(`Please paste a ${labels[source]} link first.`);
@@ -540,6 +547,7 @@ function addVideoOverlay() {
                     <option value="reels">Instagram Reels</option>
                     <option value="fbreels">Facebook Reels</option>
                     <option value="ytshorts">YT Shorts</option>
+                    <option value="shopee">Shopee</option>
                 </select>
                 <input class="flex-1 bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary placeholder-slate-600 vid-overlay-link-url" type="text" placeholder="Paste video link here..."/>
                 <button class="px-3 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-primary/10 hover:border-primary/30 hover:text-primary transition-all text-sm font-bold flex items-center gap-1 shrink-0 btn-vid-link-download">
@@ -762,6 +770,104 @@ function getVideoOverlayOptions() {
 }
 
 // ========================================
+// HIDE WATERMARK REGION
+// ========================================
+let watermarkRegionCounter = 0;
+
+const WATERMARK_PRESETS = {
+    shopee:           { label: 'Shopee (kiri-tengah)',  x_pct: 0,  y_pct: 46, w_pct: 36, h_pct: 10, method: 'delogo_blur', strength: 8 },
+    'tiktok-top':     { label: 'TikTok atas',            x_pct: 30, y_pct: 4,  w_pct: 40, h_pct: 6,  method: 'delogo_blur', strength: 8 },
+    'tiktok-bottom':  { label: 'TikTok bawah (@user)',   x_pct: 5,  y_pct: 88, w_pct: 50, h_pct: 8,  method: 'delogo_blur', strength: 8 },
+    'ig-top':         { label: 'IG atas',                x_pct: 5,  y_pct: 4,  w_pct: 35, h_pct: 6,  method: 'delogo_blur', strength: 8 },
+    'ytshorts-bottom':{ label: 'YT Shorts bawah',        x_pct: 60, y_pct: 90, w_pct: 35, h_pct: 8,  method: 'delogo_blur', strength: 8 },
+};
+
+function toggleWatermarkHidePanel() {
+    const panel = document.getElementById('watermarkHidePanel');
+    const chevron = document.getElementById('watermarkHideChevron');
+    panel.classList.toggle('hidden');
+    chevron.style.transform = panel.classList.contains('hidden') ? 'rotate(-90deg)' : '';
+}
+
+function addWatermarkRegion(presetKey) {
+    const preset = presetKey ? WATERMARK_PRESETS[presetKey] : null;
+    const x_pct = preset ? preset.x_pct : 0;
+    const y_pct = preset ? preset.y_pct : 0;
+    const w_pct = preset ? preset.w_pct : 30;
+    const h_pct = preset ? preset.h_pct : 8;
+    const method = preset ? preset.method : 'delogo_blur';
+    const strength = preset ? preset.strength : 8;
+    const presetTag = presetKey || '';
+    const label = preset ? preset.label : `Region ${document.getElementById('watermarkRegionItems').children.length + 1}`;
+
+    const idx = watermarkRegionCounter++;
+    const card = document.createElement('div');
+    card.className = 'p-3 bg-card/40 rounded-lg border border-white/5 space-y-2.5';
+    card.dataset.wmIdx = idx;
+    card.dataset.wmPreset = presetTag;
+    card.innerHTML = `
+        <div class="flex items-center gap-2">
+            <span class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">${label}</span>
+            <button class="ml-auto text-slate-500 hover:text-red-400 wm-remove" type="button" title="Remove">
+                <span class="material-symbols-outlined text-base">close</span>
+            </button>
+        </div>
+        <div class="grid grid-cols-4 gap-2">
+            <label class="text-[10px] text-slate-400">X %
+                <input type="number" min="0" max="100" step="1" value="${x_pct}" class="wm-x w-full px-2 py-1 bg-card border border-white/5 rounded text-xs text-white" />
+            </label>
+            <label class="text-[10px] text-slate-400">Y %
+                <input type="number" min="0" max="100" step="1" value="${y_pct}" class="wm-y w-full px-2 py-1 bg-card border border-white/5 rounded text-xs text-white" />
+            </label>
+            <label class="text-[10px] text-slate-400">W %
+                <input type="number" min="1" max="100" step="1" value="${w_pct}" class="wm-w w-full px-2 py-1 bg-card border border-white/5 rounded text-xs text-white" />
+            </label>
+            <label class="text-[10px] text-slate-400">H %
+                <input type="number" min="1" max="100" step="1" value="${h_pct}" class="wm-h w-full px-2 py-1 bg-card border border-white/5 rounded text-xs text-white" />
+            </label>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+            <label class="text-[10px] text-slate-400">Method
+                <select class="wm-method w-full px-2 py-1 bg-card border border-white/5 rounded text-xs text-white">
+                    <option value="delogo_blur" ${method === 'delogo_blur' ? 'selected' : ''}>Delogo + Blur (rekomendasi)</option>
+                    <option value="delogo" ${method === 'delogo' ? 'selected' : ''}>Delogo (in-paint)</option>
+                    <option value="blur" ${method === 'blur' ? 'selected' : ''}>Blur (sensor)</option>
+                    <option value="cover" ${method === 'cover' ? 'selected' : ''}>Cover (kotak hitam)</option>
+                </select>
+            </label>
+            <label class="text-[10px] text-slate-400">Strength
+                <input type="range" min="1" max="30" value="${strength}" class="wm-strength w-full" />
+            </label>
+        </div>
+    `;
+    card.querySelector('.wm-remove').addEventListener('click', () => {
+        card.remove();
+    });
+    document.getElementById('watermarkRegionItems').appendChild(card);
+}
+
+function getWatermarkHideOptions() {
+    const autoShopee = document.getElementById('watermarkAutoShopee').checked;
+    const cards = document.querySelectorAll('#watermarkRegionItems > div');
+    const regions = [];
+    cards.forEach(card => {
+        const x_pct = parseFloat(card.querySelector('.wm-x').value) || 0;
+        const y_pct = parseFloat(card.querySelector('.wm-y').value) || 0;
+        const w_pct = parseFloat(card.querySelector('.wm-w').value) || 0;
+        const h_pct = parseFloat(card.querySelector('.wm-h').value) || 0;
+        if (w_pct <= 0 || h_pct <= 0) return;
+        regions.push({
+            x_pct, y_pct, w_pct, h_pct,
+            method: card.querySelector('.wm-method').value,
+            strength: parseInt(card.querySelector('.wm-strength').value) || 8,
+            preset: card.dataset.wmPreset || '',
+        });
+    });
+    if (!autoShopee && regions.length === 0) return null;
+    return { enabled: true, auto_shopee: autoShopee, regions };
+}
+
+// ========================================
 // DRAG & DROP (visual only — file dialog on click/drop)
 // ========================================
 function setupDragDrop() {
@@ -944,6 +1050,9 @@ function renderSourceList() {
             : `<span>${escapeHtml(sizeText)}</span>`;
         const durationText = escapeHtml(src.duration || '-');
         const resolutionText = src.resolution ? ` · ${escapeHtml(String(src.resolution))}` : '';
+        const platformBadge = src.source_platform
+            ? `<span class="ml-1.5 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/20">${escapeHtml(formatSourcePlatform(src.source_platform))}</span>`
+            : '';
 
         const div = document.createElement('div');
         div.className = 'bg-black/40 rounded-lg border border-white/5 px-2.5 py-2 flex items-center gap-2.5';
@@ -952,7 +1061,7 @@ function renderSourceList() {
                 <span class="material-symbols-outlined text-primary text-xs">videocam</span>
             </div>
             <div class="flex-1 min-w-0">
-                <p class="text-[11px] font-semibold text-white truncate">${escapeHtml(src.filename || '-')}</p>
+                <p class="text-[11px] font-semibold text-white truncate">${escapeHtml(src.filename || '-')}${platformBadge}</p>
                 <p class="text-[10px] text-slate-500 truncate">${sizeHtml} · ${durationText}${resolutionText}</p>
             </div>
             <div class="flex items-center gap-1 shrink-0">
@@ -1041,11 +1150,16 @@ async function resetAll() {
     Object.keys(videoOverlayFiles).forEach(k => delete videoOverlayFiles[k]);
     document.getElementById('videoOverlayWarning').classList.add('hidden');
 
+    // Reset Hide Watermark Region
+    document.getElementById('watermarkRegionItems').innerHTML = '';
+    document.getElementById('watermarkAutoShopee').checked = true;
+    watermarkRegionCounter = 0;
+
     // Reset panel collapse states (expand all)
-    ['effectsPanel', 'sourceAudioPanel', 'bgmPanel', 'textOverlayPanel', 'videoOverlayPanel', 'previewPanel'].forEach(id => {
+    ['effectsPanel', 'sourceAudioPanel', 'bgmPanel', 'textOverlayPanel', 'videoOverlayPanel', 'watermarkHidePanel', 'previewPanel'].forEach(id => {
         document.getElementById(id).classList.remove('collapsed');
     });
-    ['effectsChevron', 'sourceAudioChevron', 'bgmChevron', 'textOverlayChevron', 'videoOverlayChevron', 'previewChevron'].forEach(id => {
+    ['effectsChevron', 'sourceAudioChevron', 'bgmChevron', 'textOverlayChevron', 'videoOverlayChevron', 'watermarkHideChevron', 'previewChevron'].forEach(id => {
         document.getElementById(id).classList.remove('rotated');
     });
 
@@ -1085,6 +1199,7 @@ const SOURCE_CONFIG = {
     reels:    { label: 'Instagram Reels',  placeholder: 'Paste Instagram Reels link...',       api: 'download_from_reels',    progress: 'get_reels_download_progress' },
     fbreels:  { label: 'Facebook Reels',   placeholder: 'Paste Facebook Reels/video link...',  api: 'download_from_fbreels',  progress: 'get_fbreels_download_progress' },
     ytshorts: { label: 'YouTube Shorts',   placeholder: 'Paste YouTube Shorts link...',        api: 'download_from_ytshorts', progress: 'get_ytshorts_download_progress' },
+    shopee:   { label: 'Shopee',           placeholder: 'Paste Shopee video link (e.g. https://id.shp.ee/...)...',  api: 'download_from_shopee',   progress: 'get_shopee_download_progress' },
     gdrive:   { label: 'Google Drive',     placeholder: 'Paste Google Drive video link...',    api: 'download_from_gdrive',   progress: 'get_gdrive_download_progress' },
 };
 
@@ -1346,6 +1461,7 @@ function detectSourceFromUrl(url) {
     if (url.includes('instagram.com')) return 'reels';
     if (url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.com')) return 'fbreels';
     if (url.includes('youtube.com') || url.includes('youtu.be')) return 'ytshorts';
+    if (url.includes('shp.ee') || /(^|\.)shopee\.[a-z.]+/i.test(url)) return 'shopee';
     if (url.includes('drive.google.com')) return 'gdrive';
     return null;
 }
@@ -1610,6 +1726,7 @@ async function startCloning() {
     const sources = sourceFiles.map(s => ({
         filepath: s.filepath,
         count: s.cloneCount,
+        source_platform: s.source_platform || null,
     }));
 
     const options = {
@@ -1624,6 +1741,7 @@ async function startCloning() {
         source_audio: getSourceAudioOptions(),
         text_overlays: textOverlays,
         video_overlays: videoOverlays,
+        watermark_hide: getWatermarkHideOptions(),
     };
 
     const result = await pywebview.api.start_cloning(options);
@@ -1685,22 +1803,42 @@ async function pollProgress() {
 // PROGRESS UI
 // ========================================
 function updateProgress(data) {
-    // Progress bar
-    document.getElementById('progressBar').style.width = data.percent + '%';
-    document.getElementById('progressPercent').textContent = data.percent + '%';
+    const stage = data.stage || 'cloning';
+    const ppTotal = data.preprocess_total || 0;
+    const ppIndex = data.preprocess_index || 0;
+
+    // Progress bar — during pre-pass, show pre-pass progress instead of 0%
+    let percent = data.percent || 0;
+    if (stage === 'preprocessing' && ppTotal > 0) {
+        percent = Math.round((ppIndex / ppTotal) * 100);
+    }
+    document.getElementById('progressBar').style.width = percent + '%';
+    document.getElementById('progressPercent').textContent = percent + '%';
 
     // Counter
     const doneCount = data.items ? data.items.filter(i => i.status === 'done').length : 0;
-    document.getElementById('taskCounter').textContent = `${doneCount}/${data.total}`;
+    if (stage === 'preprocessing' && ppTotal > 0) {
+        document.getElementById('taskCounter').textContent = `${ppIndex}/${ppTotal}`;
+    } else {
+        document.getElementById('taskCounter').textContent = `${doneCount}/${data.total}`;
+    }
 
     // Label
     if (data.status === 'running') {
-        document.getElementById('progressLabel').textContent = `Processing clone #${data.current_index}...`;
+        if (stage === 'preprocessing' && ppTotal > 0) {
+            document.getElementById('progressLabel').textContent =
+                `Preprocessing watermark... ${ppIndex}/${ppTotal}`;
+        } else {
+            document.getElementById('progressLabel').textContent = `Processing clone #${data.current_index}...`;
+        }
     }
 
     // Remaining
-    if (data.estimated_remaining > 0) {
+    if (stage !== 'preprocessing' && data.estimated_remaining > 0) {
         document.getElementById('progressRemaining').textContent = `~${Math.round(data.estimated_remaining)}s remaining`;
+    } else if (stage === 'preprocessing' && ppTotal > 0) {
+        document.getElementById('progressRemaining').textContent =
+            `Hiding watermark on ${ppTotal} source${ppTotal === 1 ? '' : 's'} before cloning starts`;
     } else {
         document.getElementById('progressRemaining').textContent = '';
     }
@@ -2054,6 +2192,19 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+}
+
+const SOURCE_PLATFORM_LABELS = {
+    tiktok: 'TikTok',
+    reels: 'IG Reels',
+    fbreels: 'FB Reels',
+    ytshorts: 'YT Shorts',
+    shopee: 'Shopee',
+    gdrive: 'GDrive',
+};
+
+function formatSourcePlatform(key) {
+    return SOURCE_PLATFORM_LABELS[key] || String(key || '');
 }
 
 // ========================================

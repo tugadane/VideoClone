@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 
@@ -21,18 +22,35 @@ class VideoCloner:
         self.thread = None
         self._process = None
         self._text_overlay_cwd = None
+        # Track all currently-running ffmpeg subprocesses so cancel() can kill
+        # parallel pre-pass jobs in addition to the main clone process.
+        self._wm_processes = []
+        self._wm_lock = threading.Lock()
 
         # Build list of (source_path, count) pairs — supports both old and new format
         sources = options.get('sources')
         if sources:
             self._sources = [(s['filepath'], s['count']) for s in sources]
+            self._source_platforms = {s['filepath']: s.get('source_platform') for s in sources}
         else:
             self._sources = [(source, options.get('count', 10))]
+            self._source_platforms = {source: options.get('source_platform')}
+        # Keep originals so we can revert / clean up after preprocessing
+        self._original_sources = list(self._sources)
+        self._preprocessed_files = []
+        # Map cleaned-temp-path -> original {title} (basename without extension)
+        # so naming templates using {title} keep the user's source name even
+        # after watermark pre-pass swaps the file.
+        self._source_titles = {
+            path: os.path.splitext(os.path.basename(path))[0]
+            for path, _ in self._sources
+        }
 
         total_count = sum(c for _, c in self._sources)
 
         self.progress = {
             'status': 'idle',
+            'stage': 'idle',
             'current_index': 0,
             'total': total_count,
             'percent': 0,
@@ -41,6 +59,10 @@ class VideoCloner:
             'estimated_remaining': 0,
             'items': [],
             'error': None,
+            # Pre-pass (watermark-hide) progress
+            'preprocess_index': 0,
+            'preprocess_total': 0,
+            'preprocess_current': '',
         }
 
     def start(self):
@@ -57,7 +79,19 @@ class VideoCloner:
     def cancel(self):
         self.cancelled = True
         if self._process and self._process.poll() is None:
-            self._process.kill()
+            try:
+                self._process.kill()
+            except Exception:
+                pass
+        # Kill any in-flight watermark pre-pass ffmpeg processes
+        with self._wm_lock:
+            procs = list(self._wm_processes)
+        for p in procs:
+            try:
+                if p.poll() is None:
+                    p.kill()
+            except Exception:
+                pass
 
     def _run(self):
         start_time = time.time()
@@ -67,6 +101,7 @@ class VideoCloner:
         global_index = 0
 
         try:
+            self._preprocess_watermark_all()
             for source_path, count in self._sources:
                 self.source = source_path
                 for j in range(count):
@@ -119,6 +154,261 @@ class VideoCloner:
             self.progress['error'] = str(e)
             if self.on_error:
                 self.on_error(str(e))
+        finally:
+            self._cleanup_preprocessed()
+
+    def _cleanup_preprocessed(self):
+        """Remove temp files created by watermark preprocessing."""
+        for path in self._preprocessed_files:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
+        self._preprocessed_files = []
+
+    def _preprocess_watermark_all(self):
+        """Apply watermark-hide regions to each source video.
+        Replaces self._sources entries with cleaned temp files when applicable.
+
+        Runs jobs in parallel (up to ~half of CPU cores, capped at 3) and
+        reports progress via self.progress so the UI can show how many
+        sources have been pre-processed instead of appearing stuck at
+        "Processing clone #0"."""
+        wm = self.options.get('watermark_hide') or {}
+        if not wm.get('enabled'):
+            return
+
+        # Snapshot work items so the original order of self._sources is preserved
+        new_sources = list(self._sources)
+        pending = []  # list of (idx, src_path, count, regions)
+        for idx, (src_path, count) in enumerate(self._sources):
+            platform = self._source_platforms.get(src_path)
+            regions = self._resolve_watermark_regions(wm, platform)
+            if regions:
+                pending.append((idx, src_path, count, regions))
+
+        if not pending:
+            return
+
+        # Initialise progress UI for the pre-pass stage
+        self.progress['stage'] = 'preprocessing'
+        self.progress['preprocess_total'] = len(pending)
+        self.progress['preprocess_index'] = 0
+        self.progress['preprocess_current'] = ''
+
+        cpu = os.cpu_count() or 2
+        # Conservative parallelism: ffmpeg already multi-threads internally,
+        # so 2-3 parallel jobs typically saturate a desktop CPU without OOM.
+        workers = max(1, min(3, cpu // 2))
+
+        completed = 0
+
+        def run_one(item):
+            idx, src_path, count, regions = item
+            cleaned = self._apply_watermark_filters(src_path, regions)
+            return idx, src_path, count, cleaned
+
+        if workers <= 1 or len(pending) == 1:
+            # Sequential path (also used on single-core machines / single job)
+            for item in pending:
+                if self.cancelled:
+                    self.progress['stage'] = 'idle'
+                    return
+                self.progress['preprocess_current'] = os.path.basename(item[1])
+                idx, src_path, count, cleaned = run_one(item)
+                completed += 1
+                self.progress['preprocess_index'] = completed
+                if cleaned and cleaned != src_path:
+                    self._preprocessed_files.append(cleaned)
+                    new_sources[idx] = (cleaned, count)
+                    self._source_platforms[cleaned] = self._source_platforms.get(src_path)
+                    self._source_titles[cleaned] = self._source_titles.get(
+                        src_path, os.path.splitext(os.path.basename(src_path))[0]
+                    )
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futures = {ex.submit(run_one, item): item for item in pending}
+                try:
+                    for fut in as_completed(futures):
+                        if self.cancelled:
+                            for f in futures:
+                                f.cancel()
+                            break
+                        try:
+                            idx, src_path, count, cleaned = fut.result()
+                        except Exception:
+                            # On error, leave source unchanged and continue
+                            completed += 1
+                            self.progress['preprocess_index'] = completed
+                            continue
+                        completed += 1
+                        self.progress['preprocess_index'] = completed
+                        self.progress['preprocess_current'] = os.path.basename(src_path)
+                        if cleaned and cleaned != src_path:
+                            self._preprocessed_files.append(cleaned)
+                            new_sources[idx] = (cleaned, count)
+                            self._source_platforms[cleaned] = self._source_platforms.get(src_path)
+                            self._source_titles[cleaned] = self._source_titles.get(
+                                src_path, os.path.splitext(os.path.basename(src_path))[0]
+                            )
+                finally:
+                    if self.cancelled:
+                        # Make sure pool shuts down promptly when cancelled
+                        ex.shutdown(wait=False, cancel_futures=True)
+
+        self._sources = new_sources
+        self.progress['stage'] = 'cloning'
+
+    def _resolve_watermark_regions(self, wm, platform):
+        """Combine user-defined regions with auto-Shopee preset when applicable.
+        Returns a flat list of region dicts ready for filter generation."""
+        regions = list(wm.get('regions') or [])
+        auto_shopee = wm.get('auto_shopee', True)
+        if auto_shopee and platform == 'shopee':
+            already = any((r.get('preset') == 'shopee') for r in regions)
+            if not already:
+                regions.append({
+                    'x_pct': 0, 'y_pct': 46, 'w_pct': 36, 'h_pct': 10,
+                    'method': 'delogo_blur', 'strength': 8, 'preset': 'shopee',
+                })
+        # Filter to non-empty regions
+        valid = []
+        for r in regions:
+            try:
+                w = float(r.get('w_pct', 0))
+                h = float(r.get('h_pct', 0))
+                if w > 0 and h > 0:
+                    valid.append(r)
+            except (TypeError, ValueError):
+                continue
+        return valid
+
+    def _apply_watermark_filters(self, src_path, regions):
+        """Run a single ffmpeg pass that hides the listed regions.
+        Returns path to cleaned temp file, or src_path if no-op."""
+        info = get_video_info(self.ffmpeg_path, src_path)
+        if not info:
+            return src_path
+        src_w = int(info.get('width') or 0)
+        src_h = int(info.get('height') or 0)
+        if src_w <= 0 or src_h <= 0:
+            return src_path
+
+        def to_px(region):
+            x = max(0, int(src_w * float(region.get('x_pct', 0)) / 100.0))
+            y = max(0, int(src_h * float(region.get('y_pct', 0)) / 100.0))
+            w = max(1, int(src_w * float(region.get('w_pct', 0)) / 100.0))
+            h = max(1, int(src_h * float(region.get('h_pct', 0)) / 100.0))
+            if x + w > src_w:
+                w = src_w - x
+            if y + h > src_h:
+                h = src_h - y
+            return x, y, max(1, w), max(1, h)
+
+        simple_filters = []
+        fc_steps = []  # list of (kind, region) — kind is 'blur' (split+crop+overlay)
+
+        for r in regions:
+            method = r.get('method', 'delogo')
+            x, y, w, h = to_px(r)
+            if w < 2 or h < 2:
+                continue
+            if method == 'delogo':
+                # delogo wants interior pixels (>=1 from each edge)
+                dx = max(1, x)
+                dy = max(1, y)
+                dw = min(w, src_w - 1 - dx)
+                dh = min(h, src_h - 1 - dy)
+                if dw < 1 or dh < 1:
+                    continue
+                simple_filters.append(f"delogo=x={dx}:y={dy}:w={dw}:h={dh}:show=0")
+            elif method == 'cover':
+                color = (r.get('color') or '#000000').lstrip('#')
+                opacity = float(r.get('opacity', 0.7))
+                opacity = max(0.0, min(1.0, opacity))
+                simple_filters.append(
+                    f"drawbox=x={x}:y={y}:w={w}:h={h}:color=0x{color}@{opacity}:t=fill"
+                )
+            elif method == 'blur':
+                fc_steps.append(('blur', r, (x, y, w, h)))
+            elif method == 'delogo_blur':
+                # Apply delogo first (simple), then a soft blur on the same region
+                dx = max(1, x)
+                dy = max(1, y)
+                dw = min(w, src_w - 1 - dx)
+                dh = min(h, src_h - 1 - dy)
+                if dw >= 1 and dh >= 1:
+                    simple_filters.append(f"delogo=x={dx}:y={dy}:w={dw}:h={dh}:show=0")
+                fc_steps.append(('blur', r, (x, y, w, h)))
+
+        if not simple_filters and not fc_steps:
+            return src_path
+
+        out_path = os.path.join(
+            tempfile.gettempdir(), f'wmrem_{uuid.uuid4().hex[:8]}.mp4'
+        )
+
+        cmd = [self.ffmpeg_path, '-y', '-i', src_path]
+        if fc_steps:
+            # Build filter_complex: chain simple filters first, then split/crop/boxblur/overlay per fc step
+            fc_parts = []
+            cur = '0:v'
+            if simple_filters:
+                fc_parts.append(f"[{cur}]{','.join(simple_filters)}[v_pre]")
+                cur = 'v_pre'
+            for i, (_, region, (x, y, w, h)) in enumerate(fc_steps):
+                strength = max(1, int(region.get('strength', 8)))
+                base = f"v_base{i}"
+                blur = f"v_blur{i}"
+                cropped = f"v_crop{i}"
+                nxt = f"v_wm{i}"
+                fc_parts.append(f"[{cur}]split=2[{base}][{blur}]")
+                fc_parts.append(
+                    f"[{blur}]crop={w}:{h}:{x}:{y},boxblur={strength}:1[{cropped}]"
+                )
+                fc_parts.append(f"[{base}][{cropped}]overlay={x}:{y}[{nxt}]")
+                cur = nxt
+            cmd += [
+                '-filter_complex', ';'.join(fc_parts),
+                '-map', f'[{cur}]', '-map', '0:a?',
+            ]
+        else:
+            cmd += ['-vf', ','.join(simple_filters), '-map', '0:v', '-map', '0:a?']
+
+        # Pre-pass output is an intermediate file that the clone step re-encodes
+        # again (typically with libx264 -crf 18). Quality of this intermediate
+        # therefore has no impact on final output, so we use the fastest preset
+        # available to minimise time spent in the pre-pass stage.
+        cmd += [
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'copy',
+            out_path,
+        ]
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+        )
+        # Track this process so cancel() can kill it even when running in
+        # parallel (multiple pre-passes share the cancel signal).
+        with self._wm_lock:
+            self._wm_processes.append(proc)
+        try:
+            _, stderr = proc.communicate()
+        finally:
+            with self._wm_lock:
+                try:
+                    self._wm_processes.remove(proc)
+                except ValueError:
+                    pass
+        if proc.returncode != 0:
+            err = stderr.decode('utf-8', errors='replace').strip()[-400:]
+            raise RuntimeError(f"Watermark hide preprocessing failed: {err}")
+        return out_path
 
     def _generate_clone(self, index, output_path):
         self._text_overlay_cwd = None
@@ -435,7 +725,13 @@ class VideoCloner:
     def _resolve_filename(self, index):
         template = self.options.get('template', '{title}_clone{index}_{date}')
         fmt = self.options.get('format', 'mp4')
-        source_name = os.path.splitext(os.path.basename(self.source))[0]
+        # Prefer the original source's title (pre watermark-pre-pass) so that
+        # {title} in the user's template doesn't surface internal temp names
+        # like "wmrem_a1b2c3d4" when auto-Shopee watermark removal is on.
+        source_name = self._source_titles.get(
+            self.source,
+            os.path.splitext(os.path.basename(self.source))[0],
+        )
         now = datetime.now()
 
         def build_filename(index_value):
