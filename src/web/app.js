@@ -1803,22 +1803,42 @@ async function pollProgress() {
 // PROGRESS UI
 // ========================================
 function updateProgress(data) {
-    // Progress bar
-    document.getElementById('progressBar').style.width = data.percent + '%';
-    document.getElementById('progressPercent').textContent = data.percent + '%';
+    const stage = data.stage || 'cloning';
+    const ppTotal = data.preprocess_total || 0;
+    const ppIndex = data.preprocess_index || 0;
+
+    // Progress bar — during pre-pass, show pre-pass progress instead of 0%
+    let percent = data.percent || 0;
+    if (stage === 'preprocessing' && ppTotal > 0) {
+        percent = Math.round((ppIndex / ppTotal) * 100);
+    }
+    document.getElementById('progressBar').style.width = percent + '%';
+    document.getElementById('progressPercent').textContent = percent + '%';
 
     // Counter
     const doneCount = data.items ? data.items.filter(i => i.status === 'done').length : 0;
-    document.getElementById('taskCounter').textContent = `${doneCount}/${data.total}`;
+    if (stage === 'preprocessing' && ppTotal > 0) {
+        document.getElementById('taskCounter').textContent = `${ppIndex}/${ppTotal}`;
+    } else {
+        document.getElementById('taskCounter').textContent = `${doneCount}/${data.total}`;
+    }
 
     // Label
     if (data.status === 'running') {
-        document.getElementById('progressLabel').textContent = `Processing clone #${data.current_index}...`;
+        if (stage === 'preprocessing' && ppTotal > 0) {
+            document.getElementById('progressLabel').textContent =
+                `Preprocessing watermark... ${ppIndex}/${ppTotal}`;
+        } else {
+            document.getElementById('progressLabel').textContent = `Processing clone #${data.current_index}...`;
+        }
     }
 
     // Remaining
-    if (data.estimated_remaining > 0) {
+    if (stage !== 'preprocessing' && data.estimated_remaining > 0) {
         document.getElementById('progressRemaining').textContent = `~${Math.round(data.estimated_remaining)}s remaining`;
+    } else if (stage === 'preprocessing' && ppTotal > 0) {
+        document.getElementById('progressRemaining').textContent =
+            `Hiding watermark on ${ppTotal} source${ppTotal === 1 ? '' : 's'} before cloning starts`;
     } else {
         document.getElementById('progressRemaining').textContent = '';
     }

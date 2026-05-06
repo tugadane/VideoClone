@@ -6,6 +6,21 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.6.3] — 2026-05-06
+
+### Performance
+- **Watermark pre-pass jauh lebih cepat.** Encoder pre-pass diturunkan dari `libx264 -preset fast -crf 20` ke `libx264 -preset ultrafast -crf 23`. File hasil pre-pass lebih besar tapi cuma intermediate (di-re-encode lagi oleh clone step), jadi tidak berpengaruh ke kualitas akhir. Speedup ~3.9× per source pada uji 480×854 / 52 detik (26.4 dt → 6.7 dt).
+- **Pre-pass dijalankan paralel.** Hingga 3 ffmpeg jobs paralel (skala dengan jumlah core CPU, dibatasi ~setengah core dengan max 3) sehingga batch 100 source jauh lebih cepat sebelum cloning dimulai.
+- `cancel()` sekarang juga membunuh ffmpeg pre-pass yang sedang berjalan, bukan hanya proses clone aktif.
+
+### Fixed
+- Naming template `{title}` sekarang tetap memakai nama source asli kamu (mis. `shopee_xxxx`), bukan nama temp file `wmrem_xxxxxxxx` yang muncul setelah pre-pass watermark di v0.6.0–v0.6.2.
+
+### Changed
+- UI progress sekarang menampilkan tahap pre-pass: label "Preprocessing watermark... X/Y" + progress bar dan counter ikut maju selama pre-pass, jadi tidak terlihat seperti aplikasi hang di "Processing clone #0... 0%" saat batch besar (mis. 100 video Shopee).
+
+---
+
 ## [v0.6.2] — 2026-05-05
 
 ### Fixed

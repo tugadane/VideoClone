@@ -5,7 +5,7 @@ from api import Api
 def main():
     api = Api()
     window = webview.create_window(
-        title="Clone Studio v0.6.2",
+        title="Clone Studio v0.6.3",
         url='web/index.html',
         js_api=api,
         width=1280,

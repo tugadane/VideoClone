@@ -9,7 +9,7 @@
 | Item             | Detail                        |
 | ---------------- | ----------------------------- |
 | Nama Aplikasi    | Clone Studio                  |
-| Versi            | v0.6.2                        |
+| Versi            | v0.6.3                        |
 | Platform         | Desktop (Windows)             |
 | Tech Stack       | Python 3.13, pywebview, FFmpeg (portable) |
 | UI Theme         | Black (#000000) + Orange (#ff5c00) |
