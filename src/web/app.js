@@ -37,6 +37,8 @@ function setupEventListeners() {
 
     // Tab switching
     document.getElementById('btnHistory').addEventListener('click', toggleHistory);
+    const btnBackToMain = document.getElementById('btnBackToMain');
+    if (btnBackToMain) btnBackToMain.addEventListener('click', toggleHistory);
 
     // Guide modal
     document.getElementById('btnGuide').addEventListener('click', () => {

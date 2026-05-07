@@ -6,6 +6,13 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.7.1] — 2026-05-06
+
+### Fixed
+- **Clone History tidak punya tombol kembali yang jelas.** Saat user buka History via tombol clock di top bar, satu-satunya cara kembali ke menu utama adalah klik ulang tombol clock itu — tidak intuitif. Tambah tombol **Back** di pojok kiri atas halaman Clone History untuk kembali ke main view langsung.
+
+---
+
 ## [v0.7.0] — 2026-05-06
 
 ### Added
