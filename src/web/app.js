@@ -37,6 +37,8 @@ function setupEventListeners() {
 
     // Tab switching
     document.getElementById('btnHistory').addEventListener('click', toggleHistory);
+    const btnBackToMain = document.getElementById('btnBackToMain');
+    if (btnBackToMain) btnBackToMain.addEventListener('click', toggleHistory);
 
     // Guide modal
     document.getElementById('btnGuide').addEventListener('click', () => {
@@ -172,6 +174,10 @@ function setupEventListeners() {
     // Video Overlay
     document.getElementById('btnToggleVideoOverlay').addEventListener('click', toggleVideoOverlayPanel);
     document.getElementById('btnAddVideoOverlay').addEventListener('click', addVideoOverlay);
+
+    // Image Overlay
+    document.getElementById('btnToggleImageOverlay').addEventListener('click', toggleImageOverlayPanel);
+    document.getElementById('btnAddImageOverlay').addEventListener('click', addImageOverlay);
 
     // Hide Watermark Region
     document.getElementById('btnToggleWatermarkHide').addEventListener('click', toggleWatermarkHidePanel);
@@ -412,7 +418,9 @@ function addTextOverlay() {
                     <option value="top-left">Top Left</option>
                     <option value="top-center">Top Center</option>
                     <option value="top-right">Top Right</option>
-                    <option value="center">Center</option>
+                    <option value="center-left">Center Left</option>
+                    <option value="center-center">Center Center</option>
+                    <option value="center-right">Center Right</option>
                     <option value="bottom-left" selected>Bottom Left</option>
                     <option value="bottom-center">Bottom Center</option>
                     <option value="bottom-right">Bottom Right</option>
@@ -494,9 +502,12 @@ const FONT_FAMILY_MAP = {
 function updateOverlayWarnings() {
     const hasText = document.querySelectorAll('#textOverlayItems > div').length > 0;
     const hasVideo = document.querySelectorAll('#videoOverlayItems > div').length > 0;
+    const hasImage = document.querySelectorAll('#imageOverlayItems > div').length > 0;
     const method = document.getElementById('selectMethod').value;
     document.getElementById('textOverlayWarning').classList.toggle('hidden', !(hasText && method === 'fast'));
     document.getElementById('videoOverlayWarning').classList.toggle('hidden', !(hasVideo && method === 'fast'));
+    const imgWarn = document.getElementById('imageOverlayWarning');
+    if (imgWarn) imgWarn.classList.toggle('hidden', !(hasImage && method === 'fast'));
 }
 
 // ========================================
@@ -577,10 +588,14 @@ function addVideoOverlay() {
                 <label class="text-xs font-semibold text-slate-400">Position</label>
                 <select class="w-full bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none vid-overlay-position">
                     <option value="top-left">Top Left</option>
+                    <option value="top-center">Top Center</option>
                     <option value="top-right">Top Right</option>
+                    <option value="center-left">Center Left</option>
+                    <option value="center-center">Center Center</option>
+                    <option value="center-right">Center Right</option>
                     <option value="bottom-left" selected>Bottom Left</option>
+                    <option value="bottom-center">Bottom Center</option>
                     <option value="bottom-right">Bottom Right</option>
-                    <option value="center">Center</option>
                 </select>
             </div>
         </div>
@@ -765,6 +780,133 @@ function getVideoOverlayOptions() {
             };
         }
         overlays.push(overlay);
+    });
+    return overlays.length > 0 ? overlays : null;
+}
+
+// ========================================
+// IMAGE OVERLAY (Multiple)
+// ========================================
+let imageOverlayCounter = 0;
+const imageOverlayFiles = {}; // { idx: { filepath, filename, dataUrl? } }
+
+function toggleImageOverlayPanel() {
+    const panel = document.getElementById('imageOverlayPanel');
+    const chevron = document.getElementById('imageOverlayChevron');
+    panel.classList.toggle('collapsed');
+    chevron.classList.toggle('rotated');
+}
+
+function addImageOverlay() {
+    const idx = imageOverlayCounter++;
+    const num = document.getElementById('imageOverlayItems').children.length + 1;
+    const card = document.createElement('div');
+    card.className = 'bg-card rounded-lg border border-white/10 p-3 space-y-3';
+    card.dataset.imgIdx = idx;
+    card.innerHTML = `
+        <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-primary">Image #${num}</span>
+            <button class="text-slate-500 hover:text-red-500 transition-colors btn-remove-img" data-idx="${idx}">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+        <div class="flex gap-2">
+            <input class="flex-1 bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary img-overlay-file" placeholder="No image selected (PNG/JPG/WebP)" type="text" readonly/>
+            <button class="px-4 py-2.5 bg-card text-slate-200 rounded-lg border border-white/10 hover:bg-white/5 hover:border-primary/30 transition-colors text-sm font-medium btn-browse-img">Browse</button>
+            <button class="px-3 py-2.5 text-slate-500 hover:text-red-500 rounded-lg hover:bg-red-500/10 transition-colors hidden btn-clear-img">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-2">
+                <div class="flex justify-between items-center">
+                    <label class="text-xs font-semibold text-slate-400">Overlay Size</label>
+                    <span class="text-primary font-bold text-sm img-overlay-size-label">25%</span>
+                </div>
+                <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary img-overlay-size" min="5" max="100" type="range" value="25"/>
+                <div class="flex justify-between text-[10px] text-slate-500 font-bold"><span>5%</span><span>100%</span></div>
+            </div>
+            <div class="space-y-1">
+                <label class="text-xs font-semibold text-slate-400">Position</label>
+                <select class="w-full bg-black border border-white/10 rounded-lg px-3 py-2.5 text-sm text-slate-200 focus:border-primary focus:ring-1 focus:ring-primary appearance-none img-overlay-position">
+                    <option value="top-left">Top Left</option>
+                    <option value="top-center">Top Center</option>
+                    <option value="top-right">Top Right</option>
+                    <option value="center-left">Center Left</option>
+                    <option value="center-center">Center Center</option>
+                    <option value="center-right">Center Right</option>
+                    <option value="bottom-left" selected>Bottom Left</option>
+                    <option value="bottom-center">Bottom Center</option>
+                    <option value="bottom-right">Bottom Right</option>
+                </select>
+            </div>
+        </div>
+        <div class="space-y-2">
+            <div class="flex justify-between items-center">
+                <label class="text-xs font-semibold text-slate-400">Opacity</label>
+                <span class="text-primary font-bold text-sm img-overlay-opacity-label">100%</span>
+            </div>
+            <input class="w-full h-1.5 bg-black rounded-lg appearance-none cursor-pointer accent-primary img-overlay-opacity" min="10" max="100" type="range" value="100"/>
+            <div class="flex justify-between text-[10px] text-slate-500 font-bold"><span>10%</span><span>100%</span></div>
+        </div>
+        <p class="text-[10px] text-slate-500">Tip: PNG dengan background transparan tampil paling rapi. JPG/WebP juga didukung.</p>
+    `;
+    document.getElementById('imageOverlayItems').appendChild(card);
+
+    card.querySelector('.btn-remove-img').addEventListener('click', () => removeImageOverlay(card, idx));
+    card.querySelector('.btn-browse-img').addEventListener('click', async () => {
+        const result = await pywebview.api.select_overlay_image();
+        if (result) {
+            imageOverlayFiles[idx] = result;
+            card.querySelector('.img-overlay-file').value = result.filename;
+            card.querySelector('.btn-clear-img').classList.remove('hidden');
+            updatePhonePreview();
+        }
+    });
+    card.querySelector('.btn-clear-img').addEventListener('click', () => {
+        delete imageOverlayFiles[idx];
+        card.querySelector('.img-overlay-file').value = '';
+        card.querySelector('.btn-clear-img').classList.add('hidden');
+        updatePhonePreview();
+    });
+    card.querySelector('.img-overlay-size').addEventListener('input', (e) => {
+        card.querySelector('.img-overlay-size-label').textContent = e.target.value + '%';
+        updatePhonePreview();
+    });
+    card.querySelector('.img-overlay-opacity').addEventListener('input', (e) => {
+        card.querySelector('.img-overlay-opacity-label').textContent = e.target.value + '%';
+        updatePhonePreview();
+    });
+    card.querySelector('.img-overlay-position').addEventListener('change', () => updatePhonePreview());
+
+    updateOverlayWarnings();
+    updatePhonePreview();
+}
+
+function removeImageOverlay(card, idx) {
+    delete imageOverlayFiles[idx];
+    card.remove();
+    document.querySelectorAll('#imageOverlayItems > div').forEach((c, i) => {
+        c.querySelector('.text-primary').textContent = `Image #${i + 1}`;
+    });
+    updateOverlayWarnings();
+    updatePhonePreview();
+}
+
+function getImageOverlayOptions() {
+    const items = document.querySelectorAll('#imageOverlayItems > div');
+    if (items.length === 0) return null;
+    const overlays = [];
+    items.forEach(card => {
+        const idx = parseInt(card.dataset.imgIdx);
+        const file = imageOverlayFiles[idx];
+        if (!file) return;
+        overlays.push({
+            filepath: file.filepath,
+            size_pct: parseInt(card.querySelector('.img-overlay-size').value),
+            position: card.querySelector('.img-overlay-position').value,
+            opacity: parseInt(card.querySelector('.img-overlay-opacity').value),
+        });
     });
     return overlays.length > 0 ? overlays : null;
 }
@@ -1149,6 +1291,12 @@ async function resetAll() {
     document.getElementById('videoOverlayItems').innerHTML = '';
     Object.keys(videoOverlayFiles).forEach(k => delete videoOverlayFiles[k]);
     document.getElementById('videoOverlayWarning').classList.add('hidden');
+
+    // Reset Image Overlay
+    document.getElementById('imageOverlayItems').innerHTML = '';
+    Object.keys(imageOverlayFiles).forEach(k => delete imageOverlayFiles[k]);
+    const imgWarn = document.getElementById('imageOverlayWarning');
+    if (imgWarn) imgWarn.classList.add('hidden');
 
     // Reset Hide Watermark Region
     document.getElementById('watermarkRegionItems').innerHTML = '';
@@ -1722,6 +1870,7 @@ async function startCloning() {
     const bgmOptions = getBgmOptions();
     const textOverlays = getTextOverlayOptions();
     const videoOverlays = getVideoOverlayOptions();
+    const imageOverlays = getImageOverlayOptions();
 
     const sources = sourceFiles.map(s => ({
         filepath: s.filepath,
@@ -1741,6 +1890,7 @@ async function startCloning() {
         source_audio: getSourceAudioOptions(),
         text_overlays: textOverlays,
         video_overlays: videoOverlays,
+        image_overlays: imageOverlays,
         watermark_hide: getWatermarkHideOptions(),
     };
 
@@ -2211,21 +2361,29 @@ function formatSourcePlatform(key) {
 // OVERLAY PREVIEW (Phone Frame)
 // ========================================
 const POSITION_STYLES = {
-    'top-left':      { top: '6%', left: '5%' },
-    'top-center':    { top: '6%', left: '50%', transform: 'translateX(-50%)' },
-    'top-right':     { top: '6%', right: '5%' },
-    'center':        { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' },
-    'bottom-left':   { bottom: '6%', left: '5%' },
-    'bottom-center': { bottom: '6%', left: '50%', transform: 'translateX(-50%)' },
-    'bottom-right':  { bottom: '6%', right: '5%' },
+    'top-left':       { top: '6%', left: '5%' },
+    'top-center':     { top: '6%', left: '50%', transform: 'translateX(-50%)' },
+    'top-right':      { top: '6%', right: '5%' },
+    'center-left':    { top: '50%', left: '5%', transform: 'translateY(-50%)' },
+    'center-center':  { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' },
+    'center-right':   { top: '50%', right: '5%', transform: 'translateY(-50%)' },
+    'center':         { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' },
+    'bottom-left':    { bottom: '6%', left: '5%' },
+    'bottom-center':  { bottom: '6%', left: '50%', transform: 'translateX(-50%)' },
+    'bottom-right':   { bottom: '6%', right: '5%' },
 };
 
 const PIP_POSITION_STYLES = {
-    'top-left':     { top: '4%', left: '4%' },
-    'top-right':    { top: '4%', right: '4%' },
-    'bottom-left':  { bottom: '4%', left: '4%' },
-    'bottom-right': { bottom: '4%', right: '4%' },
-    'center':       { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' },
+    'top-left':      { top: '4%', left: '4%' },
+    'top-center':    { top: '4%', left: '50%', transform: 'translateX(-50%)' },
+    'top-right':     { top: '4%', right: '4%' },
+    'center-left':   { top: '50%', left: '4%', transform: 'translateY(-50%)' },
+    'center-center': { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' },
+    'center-right':  { top: '50%', right: '4%', transform: 'translateY(-50%)' },
+    'center':        { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' },
+    'bottom-left':   { bottom: '4%', left: '4%' },
+    'bottom-center': { bottom: '4%', left: '50%', transform: 'translateX(-50%)' },
+    'bottom-right':  { bottom: '4%', right: '4%' },
 };
 
 function updatePhonePreview() {
@@ -2233,7 +2391,7 @@ function updatePhonePreview() {
     if (!screen) return;
 
     // Remove old overlay indicators
-    screen.querySelectorAll('.phone-text-overlay, .phone-video-overlay').forEach(el => el.remove());
+    screen.querySelectorAll('.phone-text-overlay, .phone-video-overlay, .phone-image-overlay').forEach(el => el.remove());
 
     let hasOverlays = false;
 
@@ -2289,6 +2447,32 @@ function updatePhonePreview() {
         const ckLabel = isChromakey ? 'GS' : 'PiP';
         if (isChromakey) el.style.border = '2px dashed #00ff0088';
         el.innerHTML = `<div style="text-align:center"><span class="material-symbols-outlined phone-video-overlay-icon">${ckIcon}</span><div class="phone-video-overlay-label">${ckLabel} #${i + 1}<br>${sizePct}%</div></div>`;
+        screen.appendChild(el);
+    });
+
+    // --- Image Overlays ---
+    document.querySelectorAll('#imageOverlayItems > div').forEach((card, i) => {
+        const idx = parseInt(card.dataset.imgIdx);
+        const file = imageOverlayFiles[idx];
+        if (!file) return;
+        hasOverlays = true;
+
+        const sizePct = parseInt(card.querySelector('.img-overlay-size').value);
+        const position = card.querySelector('.img-overlay-position').value;
+        const opacity = parseInt(card.querySelector('.img-overlay-opacity').value);
+
+        const el = document.createElement('div');
+        el.className = 'phone-image-overlay phone-video-overlay';
+        el.style.width = sizePct + '%';
+        el.style.aspectRatio = '1 / 1';
+        el.style.opacity = opacity / 100;
+        el.style.border = '2px dashed #f59e0b88';
+
+        const pos = PIP_POSITION_STYLES[position] || PIP_POSITION_STYLES['bottom-left'];
+        Object.assign(el.style, { top: '', bottom: '', left: '', right: '', transform: '' });
+        Object.assign(el.style, pos);
+
+        el.innerHTML = `<div style="text-align:center"><span class="material-symbols-outlined phone-video-overlay-icon">image</span><div class="phone-video-overlay-label">IMG #${i + 1}<br>${sizePct}%</div></div>`;
         screen.appendChild(el);
     });
 

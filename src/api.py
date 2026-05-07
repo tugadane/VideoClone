@@ -93,6 +93,17 @@ class Api:
             return {'filepath': filepath, 'filename': os.path.basename(filepath)}
         return None
 
+    def select_overlay_image(self):
+        file_types = ('Image Files (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif)',)
+        result = self._window.create_file_dialog(
+            webview.OPEN_DIALOG,
+            file_types=file_types,
+        )
+        if result and len(result) > 0:
+            filepath = result[0]
+            return {'filepath': filepath, 'filename': os.path.basename(filepath)}
+        return None
+
     def select_ffmpeg_path(self):
         file_types = ('Executable Files (*.exe)',)
         result = self._window.create_file_dialog(

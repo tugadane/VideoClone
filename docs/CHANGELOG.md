@@ -6,6 +6,25 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.7.1] — 2026-05-06
+
+### Fixed
+- **Clone History tidak punya tombol kembali yang jelas.** Saat user buka History via tombol clock di top bar, satu-satunya cara kembali ke menu utama adalah klik ulang tombol clock itu — tidak intuitif. Tambah tombol **Back** di pojok kiri atas halaman Clone History untuk kembali ke main view langsung.
+
+---
+
+## [v0.7.0] — 2026-05-06
+
+### Added
+- **Image Overlay (multiple).** Panel baru sejajar Text Overlay & Video Overlay. Tiap card: file picker (PNG / JPG / JPEG / WebP / BMP / GIF), Position dropdown (9 posisi), Size %, Opacity. Mendukung PNG transparan (alpha dipertahankan via `format=yuva420p`). Bisa tambah lebih dari satu image overlay sekaligus dan dikombinasikan bebas dengan Text dan Video Overlay.
+- **3 posisi baru di seluruh overlay (Text + Video + Image): Center Left, Center Center, Center Right.** Dropdown posisi sekarang punya 9 opsi penuh: top-left/center/right, center-left/center/right, bottom-left/center/right. Kompatibilitas mundur dijaga: nilai lama `center` tetap dipetakan ke center-center.
+- API method baru `select_overlay_image()` di Python bridge untuk file picker gambar.
+
+### Changed
+- `cloner.py` filter chain di-refactor: video overlay dan image overlay sekarang melewati pipeline overlay yang sama (`all_overlays` list), sehingga urutan kompose dapat diprediksi dan kode lebih ringkas. Tidak ada perubahan perilaku untuk job lama yang hanya pakai video overlay.
+
+---
+
 ## [v0.6.3] — 2026-05-06
 
 ### Performance
