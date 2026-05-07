@@ -547,10 +547,13 @@ class VideoCloner:
             else:
                 x_expr = '(w-text_w)/2'
 
-            # Base Y expression
+            # Base Y expression. Handle:
+            # top-*           -> top
+            # center, center-*-> vertical center
+            # bottom-* (else) -> bottom
             if position.startswith('top'):
                 base_y = '20'
-            elif position == 'center':
+            elif position == 'center' or position.startswith('center'):
                 base_y = f'(h-{total_h})/2'
             else:
                 base_y = f'h-{total_h}-20'
@@ -569,19 +572,26 @@ class VideoCloner:
             vf_parts.append("pad=ceil(iw/2)*2:ceil(ih/2)*2")
         vf_chain = ','.join(vf_parts) if has_video_effects else ''
 
-        # Video overlays (PiP) setup — multiple overlays
+        # Video + Image overlays setup — multiple overlays of either kind
         video_overlays = self.options.get('video_overlays', None) or []
-        vo_indices = []  # list of (input_index, overlay_config) tuples
+        image_overlays = self.options.get('image_overlays', None) or []
+        all_overlays = []  # list of (input_index, overlay_config, kind) where kind in {'video','image'}
         next_input_idx = 1 if not bgm_path else 2  # 0=source, 1=bgm(if any)
         for vo in video_overlays:
             if vo and os.path.exists(vo.get('filepath', '')):
                 if vo.get('loop', True):
                     cmd += ['-stream_loop', '-1']
                 cmd += ['-i', vo['filepath']]
-                vo_indices.append((next_input_idx, vo))
+                all_overlays.append((next_input_idx, vo, 'video'))
+                next_input_idx += 1
+        for io in image_overlays:
+            if io and os.path.exists(io.get('filepath', '')):
+                # Loop static image so it lasts as long as the main video.
+                cmd += ['-loop', '1', '-i', io['filepath']]
+                all_overlays.append((next_input_idx, io, 'image'))
                 next_input_idx += 1
 
-        has_video_overlays = len(vo_indices) > 0
+        has_overlays = len(all_overlays) > 0
 
         # Build audio filter with optional BGM mixing
         bgm_idx = 1 if bgm_path else None
@@ -597,7 +607,7 @@ class VideoCloner:
 
         # Decide encoding mode
         quality = self.options.get('quality', 'auto')
-        use_reencode = method != 'fast' or has_video_effects or has_video_overlays or quality != 'auto'
+        use_reencode = method != 'fast' or has_video_effects or has_overlays or quality != 'auto'
 
         # Scale filter for HD quality
         if quality == '720p':
@@ -623,37 +633,49 @@ class VideoCloner:
         else:
             cmd += ['-c:v', 'copy']
 
-        # Build and attach filters
-        vo_pos_map = {
-            'top-left':     'x=10:y=10',
-            'top-right':    'x=main_w-overlay_w-10:y=10',
-            'bottom-left':  'x=10:y=main_h-overlay_h-10',
-            'bottom-right': 'x=main_w-overlay_w-10:y=main_h-overlay_h-10',
-            'center':       'x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2',
+        # Build and attach filters. Position map covers the 9 named positions
+        # (top/center/bottom × left/center/right) plus the legacy 'center'
+        # alias which maps to center-center for backward compatibility.
+        ov_pos_map = {
+            'top-left':      'x=10:y=10',
+            'top-center':    'x=(main_w-overlay_w)/2:y=10',
+            'top-right':     'x=main_w-overlay_w-10:y=10',
+            'center-left':   'x=10:y=(main_h-overlay_h)/2',
+            'center-center': 'x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2',
+            'center-right':  'x=main_w-overlay_w-10:y=(main_h-overlay_h)/2',
+            'bottom-left':   'x=10:y=main_h-overlay_h-10',
+            'bottom-center': 'x=(main_w-overlay_w)/2:y=main_h-overlay_h-10',
+            'bottom-right':  'x=main_w-overlay_w-10:y=main_h-overlay_h-10',
+            'center':        'x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2',
         }
 
-        if has_video_overlays:
+        if has_overlays:
             # Get main video dimensions for proportional overlay sizing
             main_info = get_video_info(self.ffmpeg_path, self.source)
             main_w = main_info.get('width', 1080) if main_info else 1080
             main_h = main_info.get('height', 1920) if main_info else 1920
 
-            # Multiple video overlays require filter_complex with chained overlay filters
+            # Multiple overlays (video + image) require filter_complex with chained overlay filters.
             main_vf = f"[0:v]{vf_chain}[v_main]" if vf_chain else "[0:v]null[v_main]"
             fc_parts = [main_vf]
             prev_label = "v_main"
 
-            for i, (vo_idx, vo) in enumerate(vo_indices):
-                size_pct = vo.get('size_pct', 25) / 100.0
-                opacity = vo.get('opacity', 100) / 100.0
-                vo_position = vo.get('position', 'bottom-left')
-                vo_xy = vo_pos_map.get(vo_position, 'x=10:y=main_h-overlay_h-10')
-                chromakey = vo.get('chromakey', None)
+            for i, (ov_idx, ov, kind) in enumerate(all_overlays):
+                size_pct = ov.get('size_pct', 25) / 100.0
+                opacity = ov.get('opacity', 100) / 100.0
+                ov_position = ov.get('position', 'bottom-left')
+                ov_xy = ov_pos_map.get(ov_position, ov_pos_map['bottom-left'])
+                chromakey = ov.get('chromakey', None) if kind == 'video' else None
 
-                # Get overlay video dimensions to compute correct aspect ratio
-                ov_info = get_video_info(self.ffmpeg_path, vo.get('filepath', ''))
-                ov_w = ov_info.get('width', 1920) if ov_info else 1920
-                ov_h = ov_info.get('height', 1080) if ov_info else 1080
+                # Get overlay native dimensions to preserve aspect ratio.
+                # ffprobe handles both video and image inputs.
+                ov_info = get_video_info(self.ffmpeg_path, ov.get('filepath', ''))
+                if kind == 'image':
+                    ov_w = ov_info.get('width', 500) if ov_info else 500
+                    ov_h = ov_info.get('height', 500) if ov_info else 500
+                else:
+                    ov_w = ov_info.get('width', 1920) if ov_info else 1920
+                    ov_h = ov_info.get('height', 1080) if ov_info else 1080
 
                 # Compute target dimensions: size_pct of main video width, preserve overlay aspect ratio
                 target_w = int(main_w * size_pct)
@@ -665,13 +687,14 @@ class VideoCloner:
                 target_h = max(target_h, 2)
 
                 # Scale overlay to exact computed dimensions
-                pip_raw = f"v_raw{i}"
-                fc_parts.append(f"[{vo_idx}:v]scale={target_w}:{target_h}[{pip_raw}]")
+                pip_raw = f"ov_raw{i}"
+                fc_parts.append(f"[{ov_idx}:v]scale={target_w}:{target_h}[{pip_raw}]")
 
-                # Apply chroma key and/or opacity
-                pip_label = f"v_pip{i}"
+                # Apply chroma key and/or opacity. For images we always coerce
+                # to yuva420p so PNG transparency is preserved through the chain.
+                pip_label = f"ov_pip{i}"
                 pip_filters = ""
-                if chromakey or opacity < 1.0:
+                if chromakey or opacity < 1.0 or kind == 'image':
                     pip_filters += "format=yuva420p,"
                 if chromakey:
                     ck_color = chromakey.get('color', '0x00ff00').replace('#', '0x')
@@ -686,9 +709,9 @@ class VideoCloner:
                 else:
                     pip_label = pip_raw  # no extra filters needed
 
-                is_last = (i == len(vo_indices) - 1)
+                is_last = (i == len(all_overlays) - 1)
                 out_label = "v_out" if is_last else f"v_tmp{i}"
-                fc_parts.append(f"[{prev_label}][{pip_label}]overlay={vo_xy}:shortest=1:format=auto[{out_label}]")
+                fc_parts.append(f"[{prev_label}][{pip_label}]overlay={ov_xy}:shortest=1:format=auto[{out_label}]")
                 prev_label = out_label
 
             fc = ';'.join(fc_parts) + ';' + audio_fc

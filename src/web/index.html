@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="styles.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;900&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<title>Clone Studio v0.6.3</title>
+<title>Clone Studio v0.7.0</title>
 </head>
 <body class="bg-bg-dark font-display text-slate-100 min-h-screen select-none">
 
@@ -23,7 +23,7 @@
                 <h1 class="text-slate-100 text-sm font-bold leading-tight">Clone Studio</h1>
                 <p class="text-primary text-[9px] font-bold uppercase tracking-widest">Video Cloner</p>
             </div>
-            <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold uppercase border border-primary/20 ml-2">v0.6.3</span>
+            <span class="px-2 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold uppercase border border-primary/20 ml-2">v0.7.0</span>
         </div>
 
         <!-- Right: Icon buttons -->
@@ -563,6 +563,26 @@
                                         <p class="text-[10px] text-yellow-500/70 mt-1 hidden" id="videoOverlayWarning">
                                             <span class="material-symbols-outlined text-[10px] align-middle">warning</span>
                                             Video overlay requires re-encoding. "Fast" method will auto-switch to re-encode.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Image Overlay -->
+                                <div class="md:col-span-2 pt-4 border-t border-white/5">
+                                    <div class="flex items-center gap-2 mb-3 cursor-pointer select-none" id="btnToggleImageOverlay">
+                                        <span class="material-symbols-outlined text-primary text-lg">image</span>
+                                        <h3 class="font-bold text-white uppercase tracking-wider text-xs">Image Overlay</h3>
+                                        <span class="text-[10px] text-slate-500 ml-1">(optional, multiple)</span>
+                                        <span class="material-symbols-outlined text-slate-500 text-sm ml-auto transition-transform" id="imageOverlayChevron">expand_more</span>
+                                    </div>
+                                    <div id="imageOverlayPanel" class="space-y-3">
+                                        <div id="imageOverlayItems" class="space-y-3"></div>
+                                        <button class="w-full py-2.5 bg-card text-slate-300 rounded-lg border border-dashed border-white/10 hover:bg-primary/10 hover:border-primary/30 hover:text-primary transition-all text-sm font-medium flex items-center justify-center gap-2" id="btnAddImageOverlay">
+                                            <span class="material-symbols-outlined text-base">add</span> Add Image Overlay
+                                        </button>
+                                        <p class="text-[10px] text-yellow-500/70 mt-1 hidden" id="imageOverlayWarning">
+                                            <span class="material-symbols-outlined text-[10px] align-middle">warning</span>
+                                            Image overlay requires re-encoding. "Fast" method will auto-switch to re-encode.
                                         </p>
                                     </div>
                                 </div>
